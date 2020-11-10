@@ -10,6 +10,9 @@ import time
 import pandas as pd
 from psycopg2.extensions import ISOLATION_LEVEL_AUTOCOMMIT
 
+START_DATE = '2015-01-01'
+END_DATE = '2020-08-19'
+
 UTC_TZ = pytz.timezone('UTC')
 EST_TZ = pytz.timezone('America/New_York')
 
@@ -22,7 +25,7 @@ class DataGatherer:
         self.start, self.end = 0, 0
         self.data = []
         self.engine = ''
-        self.columns = ['time', 'close']
+        self.columns = ['assetID', 'Time', 'Close']
 
         with open('db_cred.txt', 'r') as f:
             creds = f.readlines()
@@ -33,7 +36,7 @@ class DataGatherer:
     def first_time(self):   
         self.connect_to_db()
         self.conn.set_isolation_level(ISOLATION_LEVEL_AUTOCOMMIT)
-        self.cur.execute("CREATE DATABASE paperTrader")
+        self.cur.execute("CREATE DATABASE papertrader")
         self.cur.close()
         self.conn.commit()
         self.conn.close()
@@ -42,8 +45,8 @@ class DataGatherer:
         dt = datetime.strptime(date_string, '%Y-%m-%d')
         return dt.replace(tzinfo=timezone.utc).timestamp()
 
-    def convert_timestamp_to_date(self, date):
-        return datetime.utcfromtimestamp(date)
+    def convert_timestamp_to_date(self, r):
+        return datetime.utcfromtimestamp(r[0])
 
     def convert_string_to_date(self, date):
         format = '%Y-%m-%d'
@@ -57,7 +60,7 @@ class DataGatherer:
         self.conn = psycopg2.connect(f'dbname={self.db_name} user={self.username} password={self.password}')
         self.cur = self.conn.cursor()
 
-    def collect_data(self, start, end, pair):
+    def collect_data(self, pair):
         """
         this function collects data, either from scratch or updates
         saves to postgresql
@@ -66,54 +69,41 @@ class DataGatherer:
         :param end str YYYY-MM-DD
         :return: N/A
         """
-        self.pair = pair.uppper()
-        print(f"Gathering data for {self.pair} for the time period of {start} - {end}.")
-        print("-----------------------------------------------------------------------\n")
-        # convert string to utc timestamp, for api
-        self.start = self.convert_string_to_timestamp(start)
-        self.end = self.convert_string_to_timestamp(end)
-
-        last_param = str(int(self.start * (10 ** 9)))
-        last = self.start
-
-        while last < self.end:
-            params = {'pair': self.pair,
-             'interval': 1440,
-              'since': last_param
-              }
-            resp = self.k.query_public('OHLC', params)
-            while len(resp) < 2:
+        self.pair = pair.upper()
+        
+        params = {'pair': self.pair,
+            'interval': 1440,
+            }
+        
+        resp = self.k.query_public('OHLC', params)
+        while len(resp) < 2:
                 print("Timed out... Sleeping for 30 seconds.")
                 time.sleep(30)
                 resp = self.k.query_public('OHLC', params)
-
-            last_param = resp['result']['last']
-            last = int(last_param) / (10 ** 9)
-            self.data.extend(resp['result'][f'X{self.pair[:3]}Z{self.pair[3:]}'])
-            print(f'{self.convert_timestamp_to_date(last)} | {datetime.now()}')
-            time.sleep(1)
-
-        # remove last row because next run will include this data
-        for i in range(1, len(self.data)):
-            if self.data[-i][2] < self.end:
-                cut_off = i
-                break
-        self.data = self.data[:-cut_off + 1]
+        #data = resp['result'][f'X{self.pair[:3]}Z{self.pair[3:6]}']
+        data = resp['result'][self.pair]
+        df = pd.DataFrame(data)
+        df['assetid'] = self.pair
+        df = df[['assetid', 0,4]]
+        df['Time'] = df.apply(self.convert_timestamp_to_date, axis=1)
+        df = df[['assetid','Time', 4]]
+        return df
 
     def create_table(self):
-        command = f'CREATE TABLE {self.pair} (price REAL, volume REAL, time VARCHAR(255),' \
-                  f' BS VARCHAR(1), ML VARCHAR(1), misc VARCHAR(255))'
+        command = "CREATE TABLE IF NOT EXISTS public.Assets (assetID VARCHAR(255) PRIMARY KEY)"
+        command1 = "CREATE TABLE IF NOT EXISTS public.History (assetID VARCHAR(255), Time VARCHAR(255), Close REAL, FOREIGN KEY (assetID) REFERENCES public.Assets (assetID), PRIMARY KEY (assetID, time))"
         self.connect_to_db()
         self.cur.execute(command)
+        self.cur.execute(command1)
         self.cur.close()
         self.conn.commit()
         self.conn.close()
 
-    def insert_data_to_db(self):
+    def insert_data_to_db(self, data):
         self.engine = self.create_db_engine()
         self.connect_to_db()
         
-        df = pd.DataFrame(self.data)
+        df = data
 
         if len(df) > 0:
             # create (col1,col2,...)
@@ -123,7 +113,7 @@ class DataGatherer:
             values = "VALUES({})".format(",".join(["%s" for _ in self.columns]))
 
             # create INSERT INTO table (columns) VALUES('%s',...)
-            insert_stmt = f"INSERT INTO {self.pair} ({columns}) {values}"
+            insert_stmt = f"INSERT INTO public.History ({columns}) {values}"
 
             psycopg2.extras.execute_batch(self.cur, insert_stmt, df.values)
             self.conn.commit()
@@ -151,10 +141,8 @@ def convert_date_to_string(date):
 
 def main():
     dg = DataGatherer()
-    try:
-        dg.first_time()
-    except:
-        'DB already exists'
+    df = dg.collect_data('ETHUSDT')
+    dg.insert_data_to_db(df)
 
 
 if __name__ == '__main__':

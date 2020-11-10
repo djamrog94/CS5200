@@ -9,34 +9,25 @@ from datetime import datetime
 from main import DataGatherer
 
 k = krakenex.API()
-params = {'pair': 'ETHUSD', 'interval': 1440}
-data = k.query_public('OHLC', params)
-df = pd.DataFrame(data['result']['XETHZUSD'])
-df = df[[0,4]]
-
-START_DATE = '2015-01-01'
-END_DATE = '2020-08-19'
-
 dg = DataGatherer()
 try:
     dg.first_time()
 except:
-    'DB already exists'
+    print('Database already exists')
 
-def convert_timestamp_to_date(r):
-    return datetime.utcfromtimestamp(r[0])
-
-df['Time'] = df.apply(convert_timestamp_to_date, axis=1)
-df = df[['Time', 4]]
-df.columns = ['Time', 'Close']
 external_stylesheets = ['https://codepen.io/chriddyp/pen/bWLwgP.css']
 
 app = dash.Dash(__name__, external_stylesheets=external_stylesheets)
-
-fig = px.line(df, x="Time", y="Close")
+df = pd.DataFrame([0])
+fig = px.line(df)
 asset_pairs = dg.get_asset_pairs()
 dropdown_options = [{'label': x, 'value': x} for x in asset_pairs]
-selected_options = []
+dg.connect_to_db()
+dg.cur.execute(f'SELECT * FROM public.Assets')
+opts = list(dg.cur.fetchall())
+print(opts)
+selected_options = [{'label': x[0], 'value': x[0]} for x in opts]
+selected_ticker = 'portfolio'
 app.layout = html.Div(children=[
     html.H1(children='Hello David'),
 
@@ -63,7 +54,7 @@ app.layout = html.Div(children=[
         dcc.Dropdown(
             id='select_pair',
             options=selected_options,
-            value = None
+            value = selected_ticker
         ),
 
         dcc.Graph(
@@ -74,20 +65,52 @@ app.layout = html.Div(children=[
 
 ])
 
+@app.callback(
+    Output(component_id='example-graph', component_property='figure'),
+    [Input(component_id='select_pair', component_property='value')]
+)
+def update_output_div(input_value):
+    if input_value == 'portfolio':
+        df = pd.DataFrame({'Time':[1,2,3,4], 'Balance': [10000,12000,11000,15000]})
+        return px.line(df, x='Time', y='Balance')
+    dg.connect_to_db()
+    dg.cur.execute(f"SELECT * FROM public.History WHERE assetID='{input_value}';")
+    data = dg.cur.fetchall()
+    df = pd.DataFrame(data, columns=dg.columns)
+    fig = px.line(df, x="Time", y="Close")
+    return fig
+
 @app.callback([Output('output-state', 'children'),
-              Output('select_pair', 'options')],
+              Output('select_pair', 'options'),
+              Output('pair', 'value')],
               [Input('add', 'n_clicks')],
               State('pair', 'value'),
                )
 def update_output(n_clicks, input1):
     if n_clicks != 0:
+        if input1 == None:
+            return 'Select an asset pair(s), then click "ADD"', selected_options, None
         opt = [{'label': x, 'value': x} for x in input1]
-        selected_options.extend(opt)
-        return f'Asset pair(s) added: {", ".join(input1)}', selected_options
+        dg.create_table()
+        for i in opt:
+            if i not in selected_options:
+                dg.engine = dg.create_db_engine()
+                dg.connect_to_db()
+                insert_st = f"INSERT INTO public.Assets VALUES ('{i['label']}')"
+                dg.cur.execute(insert_st)
+                dg.cur.close()
+                dg.conn.commit()
+                dg.conn.close()
+
+                selected_options.append(i)
+                add_history(i['label'])
+        return f'Asset pair(s) added: {", ".join(input1)}', selected_options, None
     else:
-        return 'Select an asset pair(s), then click "ADD"', selected_options
+        return 'Select an asset pair(s), then click "ADD"', selected_options, None
 
-
+def add_history(ticker):
+    df = dg.collect_data(ticker)
+    dg.insert_data_to_db(df)
 if __name__ == '__main__':
     app.run_server(debug=True)
     
