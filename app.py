@@ -1,19 +1,25 @@
 import dash
 import dash_core_components as dcc
 import dash_html_components as html
-from dash.dependencies import Input, Output, State
+from dash.dependencies import Output, Input, State
+from dash_html_components.Div import Div
+from dash_html_components.Label import Label
+import dash_table
 import plotly.express as px
 import pandas as pd
-import krakenex
-from datetime import datetime
+import numpy as np
 from main import DataGatherer
+import plotly.graph_objects as go
+from plotly.subplots import make_subplots
+from plotly.validators.scatter.marker import SymbolValidator
 
-k = krakenex.API()
+
 dg = DataGatherer()
 try:
     dg.first_time()
 except:
     print('Database already exists')
+dg.create_table()
 
 external_stylesheets = ['https://codepen.io/chriddyp/pen/bWLwgP.css']
 
@@ -25,17 +31,36 @@ dropdown_options = [{'label': x, 'value': x} for x in asset_pairs]
 dg.connect_to_db()
 dg.cur.execute(f'SELECT * FROM public.Assets')
 opts = list(dg.cur.fetchall())
-print(opts)
-selected_options = [{'label': x[0], 'value': x[0]} for x in opts]
-selected_ticker = 'portfolio'
+dg.cur.close()
+dg.conn.close()
+selected_options = [{'label': x[1], 'value': x[1]} for x in opts]
+selected_ticker = ''
+
+clicks = 0
+
+def create_order_table():
+    order_df = dg.get_order_details()
+    order_details = dash_table.DataTable(
+        data=order_df.to_dict('records'),
+        columns=[{'id': c, 'name': c} for c in order_df.columns],
+        style_cell_conditional=[
+        {
+            'if': {'column_id': c},
+            'textAlign': 'left'
+        } for c in ['Date', 'Region']
+    ],
+    style_table={'height': 330, 'overflowY': 'auto'},
+
+    style_as_list_view=True,)
+    return order_details
+
 app.layout = html.Div(children=[
     html.H1(children='Hello David'),
 
     html.Div(children='''
-        Dash: A web application framework for Python.
+        Welcome to paperTrader. Here you can track all of your orders!
     '''),
 
-    
     
     html.Div([
         html.Label('Add Asset Pair'),
@@ -47,38 +72,148 @@ app.layout = html.Div(children=[
 
         html.Button(id='add', n_clicks=0, children='Add'),
         html.Div(id='output-state')
-    ]),
+    ], style={'width': '49%'}),
 
     html.Div([
-        html.Label('Asset Pair'),
-        dcc.Dropdown(
-            id='select_pair',
-            options=selected_options,
-            value = selected_ticker
-        ),
+        html.Div([
+            html.Label('Asset Pair'),
+            dcc.Dropdown(
+                id='select_pair',
+                options=selected_options,
+                value = ''
+            ),
 
-        dcc.Graph(
-            id='example-graph',
-            figure=fig
-        ),
+        ]),
+    ], style={'width': '49%'}),
+            dcc.Graph(
+                id='example-graph',
+                figure=fig,
+            ),
+
+    html.Div([
+        html.Div([
+            html.Label('Asset Pair'),
+            dcc.Input(id='asset_to_buy', type='text', value='')], style={'width': '49%', 'float': 'left'}),
+        html.Div([
+             html.Label('Trade History'),
+             dcc.Dropdown(
+            id='trade_history',
+            options = dropdown_options,
+            value=''),
+            html.Div(id='order_details', children=create_order_table())
+        ], style={'width': '49%', 'float': 'right'}),
+
+            html.Label('Open Date | Format YYYY-MM-DD'),
+            dcc.Input(id='open_date', type='text', value=''),
+            html.Label('Close Date'),
+            dcc.Input(id='close_date', type='text', value=''),
+            html.Label('Dollar Value'),
+            dcc.Input(id='quantity', type='text', value=''),
+            html.Button(id='buy', n_clicks=0, children='Place Trade'),
+            html.Div(id='output-state1'),
+         
+
     ])
-
 ])
 
-@app.callback(
-    Output(component_id='example-graph', component_property='figure'),
-    [Input(component_id='select_pair', component_property='value')]
+
+@app.callback([Output('example-graph', 'figure'),
+               Output('asset_to_buy', 'value'),
+               Output('output-state1', 'children'),
+               Output('open_date', 'value'),
+               Output('close_date', 'value'),
+               Output('quantity', 'value'),
+               Output('order_details', 'children')],
+              [Input('select_pair', 'value'),
+               Input('buy', 'n_clicks'),
+                ],
+              [State('asset_to_buy', 'value'),
+               State('open_date', 'value'),
+               State('close_date', 'value'),
+               State('quantity', 'value')],
+               )
+
+def update_output_graph(asset_pair_drop, n_clicks, asset_pair_text, open, close, quantity):
+    # drop down trigger
+    global clicks
+    if n_clicks == clicks:
+        fig = create_graph(asset_pair_drop)
+        return fig, asset_pair_drop, '', '', '', '', create_order_table()
+
+    # button press trigger
+    else:
+        
+        clicks += 1
+        ans = ''
+        try:
+            dg.create_order(asset_pair_text, open, close, quantity)
+            ans = f'Order placed to buy ${quantity} of {asset_pair_text} completed!'
+            
+        except:
+            ans = 'Order couldnt be placed!'
+        fig = create_graph(asset_pair_drop)
+        return fig, asset_pair_drop, ans, '', '', '', create_order_table()
+
+def create_graph(asset):
+    if asset == '':
+        pl = dg.calc_profit('port')
+        fig = make_subplots(rows=1, cols=2)
+        fig.add_trace(go.Scatter(x=[0],y=[0],mode='lines'), row=1, col=1)
+        fig.add_trace(go.Scatter(x=pl['Time'],y=pl['Balance'],mode='lines+markers'), row=1, col=2)
+        
+        fig.update_xaxes(
+        rangeslider_visible=True,
+        rangeselector=dict(
+        buttons=list([
+            dict(count=1, label="1m", step="month", stepmode="backward"),
+            dict(count=6, label="6m", step="month", stepmode="backward"),
+            dict(count=1, label="YTD", step="year", stepmode="todate"),
+            dict(count=1, label="1y", step="year", stepmode="backward"),
+            dict(step="all")
+        ])
+    )
 )
-def update_output_div(input_value):
-    if input_value == 'portfolio':
-        df = pd.DataFrame({'Time':[1,2,3,4], 'Balance': [10000,12000,11000,15000]})
-        return px.line(df, x='Time', y='Balance')
-    dg.connect_to_db()
-    dg.cur.execute(f"SELECT * FROM public.History WHERE assetID='{input_value}';")
-    data = dg.cur.fetchall()
-    df = pd.DataFrame(data, columns=dg.columns)
-    fig = px.line(df, x="Time", y="Close")
+        
+        return fig
+    
+    # asset graph
+    print(asset)
+    df = dg.get_history(asset)
+    open, close = dg.get_orders(asset)
+
+    # personal graph
+    pl = dg.calc_profit('port')
+
+    if open is None:
+        fig = make_subplots(rows=1, cols=2)
+        fig.add_trace(go.Scatter(x=df['Time'],y=df['Close'],mode='lines'), row=1, col=1)
+        fig.add_trace(go.Scatter(x=pl['Time'],y=pl['Balance'],mode='lines'), row=1, col=2)
+        return fig
+
+    fig = make_subplots(rows=1, cols=2)
+    fig.add_trace(go.Scatter(x=df['Time'],y=df['Close'],mode='lines'), row=1, col=1)
+    fig.add_trace(go.Scatter(x=open['Time'],y=open['Close'], mode='markers', marker_size=10, marker_symbol=5, marker_color="green"), row=1, col=1)
+    fig.add_trace(go.Scatter(x=close['Time'],y=close['Close'], mode='markers', marker_size=10, marker_symbol=6, marker_color="red"), row=1, col=1)
+    fig.add_trace(go.Scatter(x=pl['Time'],y=pl['Balance'], mode='lines'), row=1, col=2)
+    fig.update_traces(marker=dict(size=12,
+                            line=dict(width=2,
+                                        color='DarkSlateGrey')),
+                selector=dict(mode='markers'))
+
+    fig.update_xaxes(
+    rangeslider_visible=True,
+    rangeselector=dict(
+        buttons=list([
+            dict(count=1, label="1m", step="month", stepmode="backward"),
+            dict(count=6, label="6m", step="month", stepmode="backward"),
+            dict(count=1, label="YTD", step="year", stepmode="todate"),
+            dict(count=1, label="1y", step="year", stepmode="backward"),
+            dict(step="all")
+        ])
+    )
+)    
     return fig
+
 
 @app.callback([Output('output-state', 'children'),
               Output('select_pair', 'options'),
@@ -86,7 +221,8 @@ def update_output_div(input_value):
               [Input('add', 'n_clicks')],
               State('pair', 'value'),
                )
-def update_output(n_clicks, input1):
+
+def update_assets(n_clicks, input1):
     if n_clicks != 0:
         if input1 == None:
             return 'Select an asset pair(s), then click "ADD"', selected_options, None
@@ -96,21 +232,17 @@ def update_output(n_clicks, input1):
             if i not in selected_options:
                 dg.engine = dg.create_db_engine()
                 dg.connect_to_db()
-                insert_st = f"INSERT INTO public.Assets VALUES ('{i['label']}')"
-                dg.cur.execute(insert_st)
+                dg.create_asset(dg.get_asset_id(i['label']), i['label'])
+                dg.collect_data(i['label'])
                 dg.cur.close()
                 dg.conn.commit()
                 dg.conn.close()
-
                 selected_options.append(i)
-                add_history(i['label'])
         return f'Asset pair(s) added: {", ".join(input1)}', selected_options, None
     else:
         return 'Select an asset pair(s), then click "ADD"', selected_options, None
 
-def add_history(ticker):
-    df = dg.collect_data(ticker)
-    dg.insert_data_to_db(df)
 if __name__ == '__main__':
     app.run_server(debug=True)
+
     
