@@ -159,57 +159,18 @@ class DataGatherer:
 
         return open_df, close_df
 
-    # def calc_profit(self):
-    #     start = 10_000
-    #     date = '2015-01-01'
-    #     self.cur.execute(f"SELECT Timestamp, assetID, Close FROM public.History WHERE Timestamp='{o}' AND assetID='{id}'")
-    #     self.connect_to_db()
-    #     data = self.cur.fetchall()
-    #     dates = []
-    #     pl = []
-    #     pl.append(start)
-    #     dates.append(date)
-    #     for d in data:
-    #         id = d[1]
-    #         o = d[2]
-    #         c = d[3]
-    #         q = d[4]
-    #         self.cur.execute(f"SELECT Close FROM public.History WHERE Timestamp='{o}' AND assetID='{id}'")
-    #         o_price = self.cur.fetchone()[0]
-    #         self.cur.execute(f"SELECT Close FROM public.History WHERE Timestamp='{c}' AND assetID='{id}'")
-    #         c_price = self.cur.fetchone()[0]
-    #         dates.append(self.convert_timestamp_to_date([d[3]]))
-    #         pl.append(((c_price / o_price - 1) * q) + q)
-    #     pl = [sum(pl[:i]) for i in range(1,len(pl)+1)]
-    #     return pd.DataFrame({'Time': dates, 'Balance': pl})
-
-    def calc_daily_return(r):
-        pass
-
     def calc_profit(self, pair):
         start = 10_000
-        start_date = '2015-01-01'
-        end_date = '2020-08-19'
-        start_ts = self.convert_timestamp_to_date_single(start_date)
-        end_ts = self.convert_timestamp_to_date_single(end_date)
-
+        date = '2015-01-01'
         if pair == 'port':
-            sql_stmt = f"SELECT * FROM public.History WHERE Timestamp >= {start_ts} AND Timestamp <= {end_ts}"
             sql_stmt1 = f"SELECT * FROM public.Orders"
         else:
             id = self.get_asset_id(pair)
             sql_stmt = f"SELECT * FROM public.Orders WHERE assetID='{id}' ORDER BY closeDate"
+        # self.cur.execute(f"SELECT Timestamp, assetID, Close FROM public.History WHERE Timestamp='{o}' AND assetID='{id}'")
         self.connect_to_db()
-        self.cur.execute(sql_stmt)
-        history = self.cur.fetchall()
         self.cur.execute(sql_stmt1)
-        orders = self.cur.fetchall()
-        df = pd.DataFrame(history)
-        for i in range(len(history)):
-            ts = history.iloc[i]['Timestamp']
-            
-        df['daily_return'] = df.apply(calc_daily_return, axis=1)
-
+        data = self.cur.fetchall()
         dates = []
         pl = []
         pl.append(start)
@@ -227,6 +188,51 @@ class DataGatherer:
             pl.append(((c_price / o_price - 1) * q) + q)
         pl = [sum(pl[:i]) for i in range(1,len(pl)+1)]
         return pd.DataFrame({'Time': dates, 'Balance': pl})
+
+    def calc_daily_return(r):
+        pass
+
+    # def calc_profit(self, pair):
+    #     start = 10_000
+    #     start_date = '2015-01-01'
+    #     end_date = '2020-08-19'
+    #     start_ts = self.convert_timestamp_to_date_single(start_date)
+    #     end_ts = self.convert_timestamp_to_date_single(end_date)
+
+    #     if pair == 'port':
+    #         sql_stmt = f"SELECT * FROM public.History WHERE Timestamp >= {start_ts} AND Timestamp <= {end_ts}"
+    #         sql_stmt1 = f"SELECT * FROM public.Orders"
+    #     else:
+    #         id = self.get_asset_id(pair)
+    #         sql_stmt = f"SELECT * FROM public.Orders WHERE assetID='{id}' ORDER BY closeDate"
+    #     self.connect_to_db()
+    #     self.cur.execute(sql_stmt)
+    #     history = self.cur.fetchall()
+    #     self.cur.execute(sql_stmt1)
+    #     orders = self.cur.fetchall()
+    #     df = pd.DataFrame(history)
+    #     for i in range(len(history)):
+    #         ts = history.iloc[i]['Timestamp']
+            
+    #     df['daily_return'] = df.apply(calc_daily_return, axis=1)
+
+    #     dates = []
+    #     pl = []
+    #     pl.append(start)
+    #     dates.append(date)
+    #     for d in data:
+    #         id = d[1]
+    #         o = d[2]
+    #         c = d[3]
+    #         q = d[4]
+    #         self.cur.execute(f"SELECT Close FROM public.History WHERE Timestamp='{o}' AND assetID='{id}'")
+    #         o_price = self.cur.fetchone()[0]
+    #         self.cur.execute(f"SELECT Close FROM public.History WHERE Timestamp='{c}' AND assetID='{id}'")
+    #         c_price = self.cur.fetchone()[0]
+    #         dates.append(self.convert_timestamp_to_date([d[3]]))
+    #         pl.append(((c_price / o_price - 1) * q) + q)
+    #     pl = [sum(pl[:i]) for i in range(1,len(pl)+1)]
+    #     return pd.DataFrame({'Time': dates, 'Balance': pl})
    
 
     def create_table(self):
