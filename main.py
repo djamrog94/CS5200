@@ -1,11 +1,9 @@
-import krakenex
 from sqlalchemy import create_engine
 import psycopg2
 import psycopg2.extras
 from datetime import datetime
 from datetime import timezone
 import pytz
-import time
 import pandas as pd
 from psycopg2.extensions import ISOLATION_LEVEL_AUTOCOMMIT
 import dash_bootstrap_components as dbc
