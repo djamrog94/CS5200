@@ -163,7 +163,7 @@ class DataGatherer:
         start = 10_000
         date = '2015-01-01'
         if pair == 'port':
-            sql_stmt1 = f"SELECT * FROM public.Orders"
+            sql_stmt1 = f"SELECT * FROM public.Orders ORDER BY closeDate"
         else:
             id = self.get_asset_id(pair)
             sql_stmt = f"SELECT * FROM public.Orders WHERE assetID='{id}' ORDER BY closeDate"
