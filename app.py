@@ -7,19 +7,14 @@ from dash_html_components.Label import Label
 import dash_table
 import plotly.express as px
 import pandas as pd
-import numpy as np
-from main import DataGatherer
+import helpers
+from mydb import Database
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 from plotly.validators.scatter.marker import SymbolValidator
 
 
-dg = DataGatherer()
-try:
-    dg.first_time()
-except:
-    print('Database already exists')
-dg.create_table()
+dg = Database()
 
 external_stylesheets = ['https://codepen.io/chriddyp/pen/bWLwgP.css']
 
@@ -28,12 +23,9 @@ df = pd.DataFrame([0])
 fig = px.line(df)
 asset_pairs = dg.get_asset_pairs()
 dropdown_options = [{'label': x, 'value': x} for x in asset_pairs]
-dg.connect_to_db()
-dg.cur.execute(f'SELECT * FROM public.Assets')
-opts = list(dg.cur.fetchall())
-dg.cur.close()
-dg.conn.close()
-selected_options = [{'label': x[1], 'value': x[1]} for x in opts]
+sql_stmt = f'SELECT * FROM Assets'
+opts = dg.send_query(sql_stmt, helpers.ResponseType.ALL)
+selected_options = [{'label': x['name'], 'value': x['name']} for x in opts]
 selected_ticker = ''
 
 clicks = 0
@@ -170,9 +162,9 @@ def create_graph(asset):
             dict(count=1, label="YTD", step="year", stepmode="todate"),
             dict(count=1, label="1y", step="year", stepmode="backward"),
             dict(step="all")
-        ])
+            ])
+        )
     )
-)
         
         return fig
     
@@ -227,22 +219,16 @@ def update_assets(n_clicks, input1):
         if input1 == None:
             return 'Select an asset pair(s), then click "ADD"', selected_options, None
         opt = [{'label': x, 'value': x} for x in input1]
-        dg.create_table()
         for i in opt:
             if i not in selected_options:
-                dg.engine = dg.create_db_engine()
-                dg.connect_to_db()
                 dg.create_asset(dg.get_asset_id(i['label']), i['label'])
                 dg.collect_data(i['label'])
-                dg.cur.close()
-                dg.conn.commit()
-                dg.conn.close()
                 selected_options.append(i)
         return f'Asset pair(s) added: {", ".join(input1)}', selected_options, None
     else:
         return 'Select an asset pair(s), then click "ADD"', selected_options, None
 
 if __name__ == '__main__':
+    # app.run_server()
     app.run_server(debug=True)
-
     

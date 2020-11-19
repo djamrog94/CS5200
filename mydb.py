@@ -1,12 +1,18 @@
 import pymysql.cursors
 import helpers
 import cryptowatch as cw
+import pandas as pd
+from sqlalchemy import create_engine
 
 class Database():
     def __init__(self) -> None:
         self.name = 'paperTrader'
         self.columns = ['assetID', 'Timestamp', 'Open', 'High', 'Low', 'Close']
         self.exchange = 'KRAKEN'
+        self.host = 'localhost'
+        self.user = 'root'
+        self.password = 'password'
+        self.port = '3306'
         try:
             connection = self.create_connection()
             connection.close()
@@ -19,11 +25,16 @@ class Database():
 
     def create_connection(self):
         return pymysql.connect(host='localhost',
-                        user='user',
-                        password='passwd',
+                        user='root',
+                        password='password',
                         db=self.name,
                         charset='utf8mb4',
                         cursorclass=pymysql.cursors.DictCursor)
+
+    def create_engine(self):
+        db_data = f'mysql+mysqldb://{self.user}:{self.password}@{self.host}:{self.port}/{self.name}?charset=utf8mb4'
+        engine = create_engine(db_data)
+        return engine
             
     def first_time(self):
         print('First time. Creating schema')
@@ -36,8 +47,9 @@ class Database():
                             cursorclass=pymysql.cursors.DictCursor)
             with connection.cursor() as cursor:
                 create_db_statement = "CREATE DATABASE IF NOT EXISTS paperTrader"
-                create_asset_table_stmt = "CREATE TABLE IF NOT EXISTS ASSETS \
-                     (assetID INT PRIMARY KEY,name VARCHAR(255) NOT NULL)"
+                use_stmt = 'USE paperTrader'
+                create_asset_table_stmt = "CREATE TABLE Assets \
+                     (assetID INT PRIMARY KEY, name VARCHAR(255) NOT NULL)"
                 create_history_table_stmt = "CREATE TABLE IF NOT EXISTS History ( \
                             Timestamp VARCHAR(255), \
                             assetID INT, \
@@ -53,6 +65,7 @@ class Database():
                             assetID INT, \
                             openDate VARCHAR(255) NOT NULL, \
                             closeDate VARCHAR(255) NOT NULL, \
+                            quantity REAL NOT NULL, \
                             FOREIGN KEY (assetID) REFERENCES Assets(assetID) \
                             ON DELETE SET NULL ON UPDATE CASCADE);"
                 crate_user_table_stmt = "CREATE TABLE Users ( \
@@ -75,6 +88,7 @@ class Database():
                             ON DELETE SET NULL ON UPDATE CASCADE); "
 
                 stmts = [create_db_statement,
+                use_stmt,
                  create_asset_table_stmt,
                   create_history_table_stmt,
                   create_order_table_stmt,
@@ -94,15 +108,6 @@ class Database():
     def send_query(self, query, response):
         connection = self.create_connection()
         try:
-            with connection.cursor() as cursor:
-                cursor.execute(query)
-            connection.commit()
-        finally:
-            connection.close()
-
-    def read_query(self, query, response):
-        connection = self.create_connection()
-        try:
             with connection.cursor() as cursor:   
                 # Read a single record
                 cursor.execute(query)
@@ -111,17 +116,107 @@ class Database():
                 elif response == helpers.ResponseType.ONE:
                     result = cursor.fetchone()
                 else:
-                    return
+                    result = None
                 return result
         finally:
+            connection.commit()
             connection.close()
 
     def create_asset(self, id, pair):
-        insert_st = f"INSERT INTO public.Assets VALUES ({id}, '{pair.upper()}')"
+        insert_st = f"INSERT INTO assets VALUES ({id}, '{pair.upper()}')"
         self.send_query(insert_st, helpers.ResponseType.NONE)
 
+    def collect_data(self, pair):
+        data = cw.markets.get(f'{self.exchange}:{pair.upper()}', ohlc=True, periods=['1d'])
+        df = pd.DataFrame(data.of_1d)
+        id = self.get_asset_id(pair)
+        df['assetID'] = id
+        df = df[['assetID', 0, 1, 2, 3, 4]]
+        df.drop_duplicates(subset=['assetID', 0], keep = False, inplace=True)
+        df.columns = self.columns
+        engine = self.create_engine()
+        df.to_sql('history', engine, if_exists='append', index=False)
+
     def get_history(self, pair):
-        pass
+        sql_stmt = f"SELECT assetID FROM assets WHERE name='{pair}'"
+        id = self.send_query(sql_stmt, helpers.ResponseType.ONE)
+        sql_stmt = f"SELECT Timestamp, Close FROM history WHERE assetID='{id['assetID']}'"
+        data = self.send_query(sql_stmt, helpers.ResponseType.ALL)
+        df = pd.DataFrame(data)
+        df['Time'] = df.apply(helpers.convert_timestamp_to_date, axis = 1)
+        df = df[['Time', 'Close']]
+        return df
+
+    def create_order(self, pair, open, close, amount):
+        open = helpers.convert_string_to_timestamp(open)
+        close = helpers.convert_string_to_timestamp(close)
+        id = self.get_asset_id(pair)
+        sql_stmt = f"INSERT INTO Orders (assetID, openDate, closeDate, Quantity) VALUES ({id},'{open}', '{close}', {float(amount)})"
+        self.send_query(sql_stmt, helpers.ResponseType.NONE)
+
+    def get_order_details(self):
+        sql_smt = f"SELECT * FROM Orders"
+        data = self.send_query(sql_smt, helpers.ResponseType.ALL)
+        df = pd.DataFrame(data)
+        df['Open Date'] = df.apply(helpers.convert_timestamp_to_date, axis=1)
+        return df
+
+    def get_orders(self, pair):
+        id = self.get_asset_id(pair)
+        sql_stmt = f"SELECT openDate, closeDate FROM Orders WHERE assetID='{id}'"
+        data = self.send_query(sql_stmt, helpers.ResponseType.ALL)
+        if len(data) == 0:
+            return None, None
+        open = [[],[]]
+        close = [[],[]]
+        for trade in data:
+            sql_stmt = f"SELECT Close FROM history WHERE Timestamp='{trade['openDate'][:-2]}' AND assetID='{id}'"
+            o_price = self.send_query(sql_stmt, helpers.ResponseType.ONE)
+            open[0].append(trade['openDate'])
+            open[1].append(o_price['Close'])
+            sql_smt = f"SELECT Close FROM history WHERE Timestamp='{trade['closeDate'][:-2]}' AND assetID='{id}'"
+            c_price = self.send_query(sql_smt, helpers.ResponseType.ONE)
+            close[0].append(trade['closeDate'])
+            close[1].append(c_price['Close'])
+        open_df = pd.DataFrame({'Timestamp': open[0], 'Price': open[1]})
+        close_df = pd.DataFrame({'Timestamp': close[0], 'Price': close[1]})
+        open_df['Time'] = open_df.apply(helpers.convert_timestamp_to_date, axis = 1)
+        open_df = open_df[['Time', 'Price']]
+        open_df.columns = ['Time', 'Close']
+        close_df['Time'] = close_df.apply(helpers.convert_timestamp_to_date, axis = 1)
+        close_df = close_df[['Time', 'Price']]
+        close_df.columns = ['Time', 'Close']
+
+        return open_df, close_df
+
+    def calc_profit(self, pair):
+        start = 10_000
+        date = '2015-01-01'
+        if pair == 'port':
+            sql_stmt1 = f"SELECT * FROM Orders ORDER BY closeDate"
+        else:
+            id = self.get_asset_id(pair)
+            sql_stmt = f"SELECT * FROM Orders WHERE assetID='{id}' ORDER BY closeDate"
+        # self.cur.execute(f"SELECT Timestamp, assetID, Close FROM public.History WHERE Timestamp='{o}' AND assetID='{id}'")
+        data = self.send_query(sql_stmt1, helpers.ResponseType.ALL)
+        dates = []
+        pl = []
+        pl.append(start)
+        dates.append(date)
+        for d in data:
+            id = d['assetID']
+            o = d['openDate'][:-2]
+            c = d['closeDate'][:-2]
+            q = d['quantity']
+            sql_stmt = f"SELECT Close FROM History WHERE Timestamp='{o}' AND assetID='{id}'"
+            o_price = self.send_query(sql_stmt, helpers.ResponseType.ONE)
+            sql_stmt =f"SELECT Close FROM History WHERE Timestamp='{c}' AND assetID='{id}'"
+            c_price = self.send_query(sql_stmt, helpers.ResponseType.ONE)
+            dates.append(helpers.convert_timestamp_to_date(c))
+            pl.append(((c_price['Close'] / o_price['Close'] - 1) * q) + q)
+        pl = [sum(pl[:i]) for i in range(1,len(pl)+1)]
+        return pd.DataFrame({'Time': dates, 'Balance': pl})
+            
 
     def get_asset_pairs(self):
         resp = cw.markets.list(self.exchange)
@@ -136,5 +231,6 @@ class Database():
 
 if __name__ == "__main__":
     db = Database()
+    db.get_order_details()
 
 
