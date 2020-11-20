@@ -206,38 +206,9 @@ class Database():
 
         return open_df, close_df
 
-    # def calc_profit(self, pair):
-    #     start = 10_000
-    #     date = '2015-01-01'
-    #     if pair == 'port':
-    #         sql_stmt1 = f"SELECT * FROM Orders ORDER BY closeDate"
-    #     else:
-    #         id = self.get_asset_id(pair)
-    #         sql_stmt = f"SELECT * FROM Orders WHERE assetID='{id}' ORDER BY closeDate"
-    #     # self.cur.execute(f"SELECT Timestamp, assetID, Close FROM public.History WHERE Timestamp='{o}' AND assetID='{id}'")
-    #     data = self.send_query(sql_stmt1, helpers.ResponseType.ALL)
-    #     dates = []
-    #     pl = []
-    #     pl.append(start)
-    #     dates.append(date)
-    #     for d in data:
-    #         id = d['assetID']
-    #         o = d['openDate']
-    #         c = d['closeDate']
-    #         q = d['quantity']
-    #         sql_stmt = f"SELECT Close FROM History WHERE Timestamp='{o}' AND assetID='{id}'"
-    #         o_price = self.send_query(sql_stmt, helpers.ResponseType.ONE)
-    #         sql_stmt =f"SELECT Close FROM History WHERE Timestamp='{c}' AND assetID='{id}'"
-    #         c_price = self.send_query(sql_stmt, helpers.ResponseType.ONE)
-    #         dates.append(helpers.convert_timestamp_to_date_single(c))
-    #         pl.append(((c_price['Close'] / o_price['Close'] - 1) * q) + q)
-    #     pl = [sum(pl[:i]) for i in range(1,len(pl)+1)]
-    #     return pd.DataFrame({'Time': dates, 'Balance': pl})
-
-
     def calc_profit(self, pair):
         start_balance = 10_000
-        date = '2015-01-01'
+        date = '2018-01-01'
         date_ts = helpers.convert_string_to_timestamp(date)
         now_ts = datetime.now().timestamp()
         data = []
@@ -255,14 +226,6 @@ class Database():
                     date_dt += timedelta(days=1)
                     all_days.append(date_dt)
                 return pd.DataFrame({'Time': all_days, 'Balance': start_balance})
-
-            # df = df.set_index(df['Timestamp'])
-            # df['Balance'] = start_balance
-            # df['Timestamp'] = df.index
-            # df = df[['Timestamp', 'Balance']]
-            # df['Time'] = df.apply(helpers.convert_timestamp_to_date, axis=1)
-            # df = df[['Time', 'Balance']]
-            # return df
 
         for order in orders:
             args = [order['orderID']]
@@ -295,8 +258,6 @@ class Database():
 
             df.iat[i,1] += start_balance
         return df
-
-            
 
     def get_asset_pairs(self):
         resp = cw.markets.list(self.exchange)

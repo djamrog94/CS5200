@@ -2,8 +2,6 @@ import dash
 import dash_core_components as dcc
 import dash_html_components as html
 from dash.dependencies import Output, Input, State
-from dash_html_components.Div import Div
-from dash_html_components.Label import Label
 import dash_table
 import plotly.express as px
 import pandas as pd
@@ -11,8 +9,6 @@ import helpers
 from mydb import Database
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
-from plotly.validators.scatter.marker import SymbolValidator
-
 
 dg = Database()
 
@@ -147,25 +143,14 @@ def update_output_graph(asset_pair_drop, n_clicks, asset_pair_text, open, close,
         return fig, asset_pair_drop, ans, '', '', '', create_order_table()
 
 def create_graph(asset):
+    port_title = 'Portfolio Balance'
     if asset == '':
         pl = dg.calc_profit('port')
-        fig = make_subplots(rows=1, cols=2)
+        fig = make_subplots(rows=1, cols=2, subplot_titles=('No Asset Selected', port_title))
         fig.add_trace(go.Scatter(x=[0],y=[0],mode='lines'), row=1, col=1)
         fig.add_trace(go.Scatter(x=pl['Time'],y=pl['Balance'],mode='lines'), row=1, col=2)
-        
-        fig.update_xaxes(
-        rangeslider_visible=True,
-        rangeselector=dict(
-        buttons=list([
-            dict(count=1, label="1m", step="month", stepmode="backward"),
-            dict(count=6, label="6m", step="month", stepmode="backward"),
-            dict(count=1, label="YTD", step="year", stepmode="todate"),
-            dict(count=1, label="1y", step="year", stepmode="backward"),
-            dict(step="all")
-            ])
-        )
-    )
-        
+        fig.update_yaxes(tickformat = '$', row=1, col=1)
+        fig.update_yaxes(tickformat = '$', row=1, col=2)
         return fig
     
     # asset graph
@@ -177,12 +162,15 @@ def create_graph(asset):
     pl = dg.calc_profit('port')
 
     if open is None:
-        fig = make_subplots(rows=1, cols=2)
+        fig = make_subplots(rows=1, cols=2, subplot_titles=(f'{asset} History', port_title))
         fig.add_trace(go.Scatter(x=df['Time'],y=df['Close'],mode='lines'), row=1, col=1)
         fig.add_trace(go.Scatter(x=pl['Time'],y=pl['Balance'],mode='lines'), row=1, col=2)
+        fig.update_yaxes(tickformat = '$', row=1, col=1)
+        fig.update_yaxes(tickformat = '$', row=1, col=2)
         return fig
 
-    fig = make_subplots(rows=1, cols=2)
+    fig = make_subplots(rows=1, cols=2, subplot_titles=(f'{asset} History', port_title))
+    
     fig.add_trace(go.Scatter(x=df['Time'],y=df['Close'],mode='lines'), row=1, col=1)
     fig.add_trace(go.Scatter(x=open['Time'],y=open['Close'], mode='markers', marker_size=10, marker_symbol=5, marker_color="green"), row=1, col=1)
     fig.add_trace(go.Scatter(x=close['Time'],y=close['Close'], mode='markers', marker_size=10, marker_symbol=6, marker_color="red"), row=1, col=1)
@@ -191,19 +179,8 @@ def create_graph(asset):
                             line=dict(width=2,
                                         color='DarkSlateGrey')),
                 selector=dict(mode='markers'))
-
-    fig.update_xaxes(
-    rangeslider_visible=True,
-    rangeselector=dict(
-        buttons=list([
-            dict(count=1, label="1m", step="month", stepmode="backward"),
-            dict(count=6, label="6m", step="month", stepmode="backward"),
-            dict(count=1, label="YTD", step="year", stepmode="todate"),
-            dict(count=1, label="1y", step="year", stepmode="backward"),
-            dict(step="all")
-        ])
-    )
-)    
+    fig.update_yaxes(tickformat = '$', row=1, col=1)
+    fig.update_yaxes(tickformat = '$', row=1, col=2)
     return fig
 
 

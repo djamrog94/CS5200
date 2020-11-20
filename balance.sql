@@ -1,3 +1,4 @@
+USE papertrader;
 DROP PROCEDURE IF EXISTS order_daily_returns;
 DELIMITER $$
 CREATE PROCEDURE order_daily_returns
