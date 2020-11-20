@@ -151,7 +151,7 @@ def create_graph(asset):
         pl = dg.calc_profit('port')
         fig = make_subplots(rows=1, cols=2)
         fig.add_trace(go.Scatter(x=[0],y=[0],mode='lines'), row=1, col=1)
-        fig.add_trace(go.Scatter(x=pl['Time'],y=pl['Balance'],mode='lines+markers'), row=1, col=2)
+        fig.add_trace(go.Scatter(x=pl['Time'],y=pl['Balance'],mode='lines'), row=1, col=2)
         
         fig.update_xaxes(
         rangeslider_visible=True,

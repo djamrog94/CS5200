@@ -9,7 +9,7 @@ def convert_timestamp_to_date(r):
     return datetime.utcfromtimestamp(float(r[0]))
 
 def convert_timestamp_to_date_single(ts):
-    return datetime.utcfromtimestamp(float(ts))
+    return datetime.utcfromtimestamp(ts)
 
 
 def convert_string_to_date(date):

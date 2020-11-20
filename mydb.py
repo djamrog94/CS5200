@@ -2,6 +2,8 @@ import pymysql.cursors
 import helpers
 import cryptowatch as cw
 import pandas as pd
+import numpy as np
+from datetime import datetime, date, timedelta
 from sqlalchemy import create_engine
 
 class Database():
@@ -51,7 +53,7 @@ class Database():
                 create_asset_table_stmt = "CREATE TABLE Assets \
                      (assetID INT PRIMARY KEY, name VARCHAR(255) NOT NULL)"
                 create_history_table_stmt = "CREATE TABLE IF NOT EXISTS History ( \
-                            Timestamp VARCHAR(255), \
+                            Timestamp INT, \
                             assetID INT, \
                             open REAL NOT NULL, \
                             high REAL NOT NULL, \
@@ -63,8 +65,8 @@ class Database():
                 create_order_table_stmt = "CREATE TABLE Orders ( \
                             orderID INT AUTO_INCREMENT PRIMARY KEY, \
                             assetID INT, \
-                            openDate VARCHAR(255) NOT NULL, \
-                            closeDate VARCHAR(255) NOT NULL, \
+                            openDate INT NOT NULL, \
+                            closeDate INT NOT NULL, \
                             quantity REAL NOT NULL, \
                             FOREIGN KEY (assetID) REFERENCES Assets(assetID) \
                             ON DELETE SET NULL ON UPDATE CASCADE);"
@@ -75,7 +77,7 @@ class Database():
                 create_accounts_table_stmt = "CREATE TABLE Accounts ( \
                             accountID INT AUTO_INCREMENT PRIMARY KEY, \
                             userID INT, \
-                            openDate VARCHAR(255) NOT NULL, \
+                            openDate INT NOT NULL, \
                             startingBalance REAL NOT NULL, \
                             FOREIGN KEY (userID) REFERENCES Users(userID) \
                             ON DELETE SET NULL ON UPDATE CASCADE);"
@@ -122,6 +124,22 @@ class Database():
             connection.commit()
             connection.close()
 
+    def send_procedure(self, procedure, args, response):
+        connection = self.create_connection()
+        try:
+            with connection.cursor() as cursor:  
+                cursor.callproc(procedure, args)
+                if response == helpers.ResponseType.ALL:
+                    result = cursor.fetchall()
+                elif response == helpers.ResponseType.ONE:
+                    result = cursor.fetchone()
+                else:
+                    result = None
+                return result
+        finally:
+            connection.commit()
+            connection.close()
+
     def create_asset(self, id, pair):
         insert_st = f"INSERT INTO assets VALUES ({id}, '{pair.upper()}')"
         self.send_query(insert_st, helpers.ResponseType.NONE)
@@ -151,14 +169,13 @@ class Database():
         open = helpers.convert_string_to_timestamp(open)
         close = helpers.convert_string_to_timestamp(close)
         id = self.get_asset_id(pair)
-        sql_stmt = f"INSERT INTO Orders (assetID, openDate, closeDate, Quantity) VALUES ({id},'{open}', '{close}', {float(amount)})"
+        sql_stmt = f"INSERT INTO Orders (assetID, openDate, closeDate, Quantity) VALUES ({id},{open}, {close}, {float(amount)})"
         self.send_query(sql_stmt, helpers.ResponseType.NONE)
 
     def get_order_details(self):
         sql_smt = f"SELECT * FROM Orders"
         data = self.send_query(sql_smt, helpers.ResponseType.ALL)
         df = pd.DataFrame(data)
-        df['Open Date'] = df.apply(helpers.convert_timestamp_to_date, axis=1)
         return df
 
     def get_orders(self, pair):
@@ -170,11 +187,11 @@ class Database():
         open = [[],[]]
         close = [[],[]]
         for trade in data:
-            sql_stmt = f"SELECT Close FROM history WHERE Timestamp='{trade['openDate'][:-2]}' AND assetID='{id}'"
+            sql_stmt = f"SELECT Close FROM history WHERE Timestamp='{trade['openDate']}' AND assetID='{id}'"
             o_price = self.send_query(sql_stmt, helpers.ResponseType.ONE)
             open[0].append(trade['openDate'])
             open[1].append(o_price['Close'])
-            sql_smt = f"SELECT Close FROM history WHERE Timestamp='{trade['closeDate'][:-2]}' AND assetID='{id}'"
+            sql_smt = f"SELECT Close FROM history WHERE Timestamp='{trade['closeDate']}' AND assetID='{id}'"
             c_price = self.send_query(sql_smt, helpers.ResponseType.ONE)
             close[0].append(trade['closeDate'])
             close[1].append(c_price['Close'])
@@ -189,33 +206,96 @@ class Database():
 
         return open_df, close_df
 
+    # def calc_profit(self, pair):
+    #     start = 10_000
+    #     date = '2015-01-01'
+    #     if pair == 'port':
+    #         sql_stmt1 = f"SELECT * FROM Orders ORDER BY closeDate"
+    #     else:
+    #         id = self.get_asset_id(pair)
+    #         sql_stmt = f"SELECT * FROM Orders WHERE assetID='{id}' ORDER BY closeDate"
+    #     # self.cur.execute(f"SELECT Timestamp, assetID, Close FROM public.History WHERE Timestamp='{o}' AND assetID='{id}'")
+    #     data = self.send_query(sql_stmt1, helpers.ResponseType.ALL)
+    #     dates = []
+    #     pl = []
+    #     pl.append(start)
+    #     dates.append(date)
+    #     for d in data:
+    #         id = d['assetID']
+    #         o = d['openDate']
+    #         c = d['closeDate']
+    #         q = d['quantity']
+    #         sql_stmt = f"SELECT Close FROM History WHERE Timestamp='{o}' AND assetID='{id}'"
+    #         o_price = self.send_query(sql_stmt, helpers.ResponseType.ONE)
+    #         sql_stmt =f"SELECT Close FROM History WHERE Timestamp='{c}' AND assetID='{id}'"
+    #         c_price = self.send_query(sql_stmt, helpers.ResponseType.ONE)
+    #         dates.append(helpers.convert_timestamp_to_date_single(c))
+    #         pl.append(((c_price['Close'] / o_price['Close'] - 1) * q) + q)
+    #     pl = [sum(pl[:i]) for i in range(1,len(pl)+1)]
+    #     return pd.DataFrame({'Time': dates, 'Balance': pl})
+
+
     def calc_profit(self, pair):
-        start = 10_000
+        start_balance = 10_000
         date = '2015-01-01'
-        if pair == 'port':
-            sql_stmt1 = f"SELECT * FROM Orders ORDER BY closeDate"
-        else:
-            id = self.get_asset_id(pair)
-            sql_stmt = f"SELECT * FROM Orders WHERE assetID='{id}' ORDER BY closeDate"
-        # self.cur.execute(f"SELECT Timestamp, assetID, Close FROM public.History WHERE Timestamp='{o}' AND assetID='{id}'")
-        data = self.send_query(sql_stmt1, helpers.ResponseType.ALL)
-        dates = []
-        pl = []
-        pl.append(start)
-        dates.append(date)
-        for d in data:
-            id = d['assetID']
-            o = d['openDate'][:-2]
-            c = d['closeDate'][:-2]
-            q = d['quantity']
-            sql_stmt = f"SELECT Close FROM History WHERE Timestamp='{o}' AND assetID='{id}'"
-            o_price = self.send_query(sql_stmt, helpers.ResponseType.ONE)
-            sql_stmt =f"SELECT Close FROM History WHERE Timestamp='{c}' AND assetID='{id}'"
-            c_price = self.send_query(sql_stmt, helpers.ResponseType.ONE)
-            dates.append(helpers.convert_timestamp_to_date(c))
-            pl.append(((c_price['Close'] / o_price['Close'] - 1) * q) + q)
-        pl = [sum(pl[:i]) for i in range(1,len(pl)+1)]
-        return pd.DataFrame({'Time': dates, 'Balance': pl})
+        date_ts = helpers.convert_string_to_timestamp(date)
+        now_ts = datetime.now().timestamp()
+        data = []
+        sql_stmt = "SELECT orderID FROM orders"
+        orders = self.send_query(sql_stmt, helpers.ResponseType.ALL)
+        if len(orders) == 0:
+            sql_stmt = f"SELECT DISTINCT Timestamp from history WHERE Timestamp >= {date_ts} and Timestamp <= {now_ts}"
+            dates = self.send_query(sql_stmt, helpers.ResponseType.ALL)
+            df = pd.DataFrame(dates)
+            all_days = []
+            if len(df) == 0:
+                date_dt = helpers.convert_string_to_date(date)
+                all_days.append(date_dt)
+                while date_dt < datetime.now():
+                    date_dt += timedelta(days=1)
+                    all_days.append(date_dt)
+                return pd.DataFrame({'Time': all_days, 'Balance': start_balance})
+
+            # df = df.set_index(df['Timestamp'])
+            # df['Balance'] = start_balance
+            # df['Timestamp'] = df.index
+            # df = df[['Timestamp', 'Balance']]
+            # df['Time'] = df.apply(helpers.convert_timestamp_to_date, axis=1)
+            # df = df[['Time', 'Balance']]
+            # return df
+
+        for order in orders:
+            args = [order['orderID']]
+            resp = self.send_procedure('order_daily_returns', args, helpers.ResponseType.ALL)
+            df = pd.DataFrame(resp)
+            quantity = df.iloc[0]['Quantity']
+            rets = np.cumprod(1 + df['percChange'].values) - 1
+            rets = rets * quantity
+            rets_df = pd.DataFrame(rets, index=df['Timestamp'], columns=['Balance'])
+            rets_df = rets_df.dropna()
+            data.append(rets_df)
+        sql_stmt = f"SELECT DISTINCT Timestamp from history WHERE Timestamp >= {date_ts} and Timestamp <= {now_ts}"
+        dates = self.send_query(sql_stmt, helpers.ResponseType.ALL)
+        df = pd.DataFrame(dates)
+        df = df.set_index(df['Timestamp'])
+        df['Balance'] = 0
+        df = df[['Balance']]
+        for dd in data:
+            df = df.add(dd, fill_value=0)
+        df['Timestamp'] = df.index
+        df = df[['Timestamp', 'Balance']]
+        df['Time'] = df.apply(helpers.convert_timestamp_to_date, axis=1)
+        df = df[['Time', 'Balance']]
+        for i in range(len(df)):
+            if i == 0:
+                 df.iat[i,1] += start_balance
+                 continue
+            if df.iloc[i]['Balance'] == 0:
+                start_balance = df.iloc[i-1]['Balance']
+
+            df.iat[i,1] += start_balance
+        return df
+
             
 
     def get_asset_pairs(self):
@@ -231,6 +311,6 @@ class Database():
 
 if __name__ == "__main__":
     db = Database()
-    db.get_order_details()
+    db.calc_profit('port')
 
 
