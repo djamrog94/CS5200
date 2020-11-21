@@ -25,6 +25,7 @@ selected_options = [{'label': x['name'], 'value': x['name']} for x in opts]
 selected_ticker = ''
 
 clicks = 0
+order_clicks = 0
 
 def create_order_table():
     order_df = dg.get_order_details()
@@ -39,7 +40,12 @@ def create_order_table():
     ],
     style_table={'height': 330, 'overflowY': 'auto'},
 
-    style_as_list_view=True,)
+    style_as_list_view=True,
+    filter_action="native",
+    sort_action="native",
+    sort_mode="multi",
+    row_selectable='multi',
+    selected_rows=[])
     return order_details
 
 app.layout = html.Div(children=[
@@ -88,7 +94,9 @@ app.layout = html.Div(children=[
             id='trade_history',
             options = dropdown_options,
             value=''),
-            html.Div(id='order_details', children=create_order_table())
+            html.Div(id='order_details', children=create_order_table()),
+            html.Button(id='remove_order', n_clicks=0, children='Remove Order(s)'),
+            html.Div(id='order_remove_details')
         ], style={'width': '49%', 'float': 'right'}),
 
             html.Label('Open Date | Format YYYY-MM-DD'),
@@ -103,6 +111,24 @@ app.layout = html.Div(children=[
 
     ])
 ])
+
+@app.callback([Output('order_details', 'children'),
+              Output('order_remove_details', 'children'),
+              ],
+              [Input('remove_order', 'n_clicks')],
+              State('order_details', 'children'),
+               )
+
+def remove_order(n_clicks, orders):
+    global order_clicks
+    if n_clicks == order_clicks:
+        return create_order_table(), ''
+
+    else:
+        order_clicks += 1
+        resp = ''
+        hi = orders.selected_rows 
+        print(hi)
 
 
 @app.callback([Output('example-graph', 'figure'),

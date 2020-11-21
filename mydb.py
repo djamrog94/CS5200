@@ -34,7 +34,7 @@ class Database():
                         cursorclass=pymysql.cursors.DictCursor)
 
     def create_engine(self):
-        db_data = f'mysql+mysqldb://{self.user}:{self.password}@{self.host}:{self.port}/{self.name}?charset=utf8mb4'
+        db_data = f'mysql+pymysql://{self.user}:{self.password}@{self.host}:{self.port}/{self.name}?charset=utf8mb4'
         engine = create_engine(db_data)
         return engine
             
@@ -173,9 +173,8 @@ class Database():
         self.send_query(sql_stmt, helpers.ResponseType.NONE)
 
     def get_order_details(self):
-        sql_smt = f"SELECT * FROM Orders"
-        data = self.send_query(sql_smt, helpers.ResponseType.ALL)
-        df = pd.DataFrame(data)
+        resp = self.send_procedure('order_details', [], helpers.ResponseType.ALL)
+        df = pd.DataFrame(resp)
         return df
 
     def get_orders(self, pair):
@@ -272,6 +271,6 @@ class Database():
 
 if __name__ == "__main__":
     db = Database()
-    db.calc_profit('port')
+    db.get_order_details()
 
 
