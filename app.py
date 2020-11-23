@@ -17,8 +17,6 @@ external_stylesheets = ['https://codepen.io/chriddyp/pen/bWLwgP.css']
 
 app = dash.Dash(__name__, external_stylesheets=external_stylesheets)
 
-
-
 buy_clicks = 0
 order_clicks = 0
 asset_clicks = 0
@@ -27,7 +25,6 @@ add_clicks = 0
 def empty_graph():
     df = pd.DataFrame([0])
     return px.line(df)
-
 
 def get_all_pairs():
     asset_pairs = dg.get_asset_pairs()
@@ -126,27 +123,6 @@ app.layout = html.Div(children=[
     ])
 ])
 
-
-# @app.callback([Output('output-state', 'children'),
-#               Output('select_pair', 'options'),
-#               Output('pair', 'value')],
-#               [Input('add', 'n_clicks')],
-#               State('pair', 'value'),
-#                )
-
-# def update_assets(n_clicks, input1):
-#     if n_clicks != 0:
-#         if input1 == None:
-#             return 'Select an asset pair(s), then click "ADD"', get_select_options(), None
-#         opt = [{'label': x, 'value': x} for x in input1]
-#         for i in opt:
-#             if i not in get_select_options():
-#                 dg.create_asset(dg.get_asset_id(i['label']), i['label'])
-#                 dg.collect_data(i['label'])
-#         return f'Asset pair(s) added: {", ".join(input1)}', get_select_options(), None
-#     else:
-#         return 'Select an asset pair(s), then click "ADD"', get_select_options(), None
-
 # major callback
 @app.callback([Output('output-state', 'children'),
                Output('select_pair', 'options'),
@@ -171,23 +147,24 @@ app.layout = html.Div(children=[
                State('asset_to_buy', 'value'),
                State('open_date', 'value'),
                State('close_date', 'value'),
-               State('quantity', 'value')],
+               State('quantity', 'value'),
+               State('order_details', 'children')]
                )
 
 # update basically everything on the screen
-def update_output_graph(a_clicks, asset_pair_drop, b_clicks, o_clicks, ass_clicks, a_pair, asset_pair_text, open, close, quantity):
-    print(asset_pair_drop, b_clicks, o_clicks, a_clicks, asset_pair_text, open, close, quantity)
+def update_output_graph(a_clicks, asset_pair_drop, b_clicks, o_clicks, ass_clicks, a_pair, asset_pair_text, open, close, quantity, order_table):
     global add_clicks, buy_clicks, order_clicks, asset_clicks
     if a_clicks != add_clicks:
         add_clicks += 1
         if a_pair == None:
             ans = 'Select an asset pair(s), then click "ADD"'
-        opt = [{'label': x, 'value': x} for x in a_pair]
-        for i in opt:
-            if i not in get_select_options():
-                dg.create_asset(dg.get_asset_id(i['label']), i['label'])
-                dg.collect_data(i['label'])
-        ans = f'Asset pair(s) added: {", ".join(a_pair)}'
+        else:
+            opt = [{'label': x, 'value': x} for x in a_pair]
+            for i in opt:
+                if i not in get_select_options():
+                    dg.create_asset(dg.get_asset_id(i['label']), i['label'])
+                    dg.collect_data(i['label'])
+            ans = f'Asset pair(s) added: {", ".join(a_pair)}'
         return ans, get_select_options(), None, dash.no_update, dash.no_update, dash.no_update, \
          dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update
 
@@ -202,15 +179,18 @@ def update_output_graph(a_clicks, asset_pair_drop, b_clicks, o_clicks, ass_click
         except:
             ans = 'Order couldnt be placed!'
         fig = create_graph(asset_pair_drop)
-        return dash.no_update, dash.no_update, dash.no_update, fig, asset_pair_drop, ans, \
-             dash.no_update, '', '', create_order_table(), '', ''
+        return '', dash.no_update, dash.no_update, fig, asset_pair_drop, ans, \
+             '', '', '', create_order_table(), '', ''
 
     # remove orders
     elif o_clicks != order_clicks:
         order_clicks += 1
-        ans = ''
+        rows = order_table['props']['selected_rows']
+        orderIDs = [order_table['props']['data'][x]['Order ID'] for x in rows]
+        dg.remove_order(orderIDs)
+        ans = f'Removed {len(rows)} order(s)!'
         fig = create_graph(asset_pair_drop)
-        return dash.no_update, dash.no_update, dash.no_update, fig, asset_pair_drop, \
+        return '', dash.no_update, dash.no_update, fig, asset_pair_drop, \
              '', '', '', '', create_order_table(), ans, ''
 
     # remove asset from history
@@ -218,13 +198,13 @@ def update_output_graph(a_clicks, asset_pair_drop, b_clicks, o_clicks, ass_click
         asset_clicks += 1
         ans = dg.remove_asset(asset_pair_drop)
         fig = create_graph('')
-        return dash.no_update, get_select_options(), None, fig, '', '', \
+        return '', get_select_options(), None, fig, '', '', \
              '', '', '', create_order_table(), '', ans
 
     # update graph based on drop down selection
     else:
         fig = create_graph(asset_pair_drop)
-        return dash.no_update, dash.no_update, dash.no_update, fig, asset_pair_drop, '', \
+        return '', dash.no_update, dash.no_update, fig, asset_pair_drop, '', \
              '', '', '', create_order_table(), '', ''
 
 

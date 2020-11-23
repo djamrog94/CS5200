@@ -69,7 +69,7 @@ class Database():
                             closeDate INT NOT NULL, \
                             quantity REAL NOT NULL, \
                             FOREIGN KEY (assetID) REFERENCES Assets(assetID) \
-                            ON DELETE SET NULL ON UPDATE CASCADE);"
+                            ON DELETE CASCADE ON UPDATE CASCADE);"
                 crate_user_table_stmt = "CREATE TABLE Users ( \
                             userID INT AUTO_INCREMENT PRIMARY KEY, \
                             firstName VARCHAR(255) NOT NULL, \
@@ -180,6 +180,11 @@ class Database():
         id = self.get_asset_id(pair)
         sql_stmt = f"INSERT INTO Orders (assetID, openDate, closeDate, Quantity) VALUES ({id},{open}, {close}, {float(amount)})"
         self.send_query(sql_stmt, helpers.ResponseType.NONE)
+
+    def remove_order(self, orderIDs):
+        for order in orderIDs:
+            sql_stmt = f"DELETE FROM orders WHERE orderID='{order}'"
+            self.send_query(sql_stmt, helpers.ResponseType.NONE)
 
     def get_order_details(self):
         resp = self.send_procedure('order_details', [], helpers.ResponseType.ALL)
