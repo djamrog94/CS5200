@@ -60,7 +60,7 @@ class Database():
                             low REAL NOT NULL, \
                             close REAL NOT NULL, \
                             FOREIGN KEY (assetID) REFERENCES Assets(assetID) \
-                            ON DELETE NO ACTION ON UPDATE CASCADE, \
+                            ON DELETE CASCADE ON UPDATE CASCADE, \
                             PRIMARY KEY (assetID, Timestamp))"
                 create_order_table_stmt = "CREATE TABLE Orders ( \
                             orderID INT AUTO_INCREMENT PRIMARY KEY, \
@@ -144,6 +144,15 @@ class Database():
         insert_st = f"INSERT INTO assets VALUES ({id}, '{pair.upper()}')"
         self.send_query(insert_st, helpers.ResponseType.NONE)
 
+    def remove_asset(self, pair):
+        id = self.get_asset_id(pair)
+        try:
+            sql_stmt = f"DELETE FROM assets WHERE assetID='{id}'"
+            self.send_query(sql_stmt, helpers.ResponseType.NONE)
+            return f'Successfully removed {pair} from database!'
+        except:
+            return f'Failed to remove {pair} from database!'
+
     def collect_data(self, pair):
         data = cw.markets.get(f'{self.exchange}:{pair.upper()}', ohlc=True, periods=['1d'])
         df = pd.DataFrame(data.of_1d)
@@ -175,6 +184,8 @@ class Database():
     def get_order_details(self):
         resp = self.send_procedure('order_details', [], helpers.ResponseType.ALL)
         df = pd.DataFrame(resp)
+        if len(df) == 0:
+            df = pd.DataFrame(None, columns=['Order ID', 'Asset Name', 'Open Date', 'Close Date', 'Quantity', 'Profit / Loss'])
         return df
 
     def get_orders(self, pair):

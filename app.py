@@ -1,3 +1,4 @@
+from io import SEEK_CUR
 import dash
 import dash_core_components as dcc
 import dash_html_components as html
@@ -15,17 +16,28 @@ dg = Database()
 external_stylesheets = ['https://codepen.io/chriddyp/pen/bWLwgP.css']
 
 app = dash.Dash(__name__, external_stylesheets=external_stylesheets)
-df = pd.DataFrame([0])
-fig = px.line(df)
-asset_pairs = dg.get_asset_pairs()
-dropdown_options = [{'label': x, 'value': x} for x in asset_pairs]
-sql_stmt = f'SELECT * FROM Assets'
-opts = dg.send_query(sql_stmt, helpers.ResponseType.ALL)
-selected_options = [{'label': x['name'], 'value': x['name']} for x in opts]
-selected_ticker = ''
 
-clicks = 0
+
+
+buy_clicks = 0
 order_clicks = 0
+asset_clicks = 0
+add_clicks = 0
+
+def empty_graph():
+    df = pd.DataFrame([0])
+    return px.line(df)
+
+
+def get_all_pairs():
+    asset_pairs = dg.get_asset_pairs()
+    return [{'label': x, 'value': x} for x in asset_pairs]
+
+def get_select_options():
+    sql_stmt = f'SELECT * FROM Assets'
+    opts = dg.send_query(sql_stmt, helpers.ResponseType.ALL)
+    return [{'label': x['name'], 'value': x['name']} for x in opts]
+    
 
 def create_order_table():
     order_df = dg.get_order_details()
@@ -60,7 +72,7 @@ app.layout = html.Div(children=[
         html.Label('Add Asset Pair'),
         dcc.Dropdown(
             id='pair',
-            options = dropdown_options,
+            options = get_all_pairs(),
             value=[],
             multi=True),
 
@@ -73,15 +85,17 @@ app.layout = html.Div(children=[
             html.Label('Asset Pair'),
             dcc.Dropdown(
                 id='select_pair',
-                options=selected_options,
+                options=get_select_options(),
                 value = ''
             ),
+            html.Button(id='remove_asset', n_clicks=0, children='Remove Asset'),
+            html.Div(id='remove_asset_status')
 
         ]),
     ], style={'width': '49%'}),
             dcc.Graph(
                 id='example-graph',
-                figure=fig,
+                figure=empty_graph(),
             ),
 
     html.Div([
@@ -92,7 +106,7 @@ app.layout = html.Div(children=[
              html.Label('Trade History'),
              dcc.Dropdown(
             id='trade_history',
-            options = dropdown_options,
+            options = get_all_pairs(),
             value=''),
             html.Div(id='order_details', children=create_order_table()),
             html.Button(id='remove_order', n_clicks=0, children='Remove Order(s)'),
@@ -112,52 +126,74 @@ app.layout = html.Div(children=[
     ])
 ])
 
-@app.callback([Output('order_details', 'children'),
-              Output('order_remove_details', 'children'),
-              ],
-              [Input('remove_order', 'n_clicks')],
-              State('order_details', 'children'),
-               )
 
-def remove_order(n_clicks, orders):
-    global order_clicks
-    if n_clicks == order_clicks:
-        return create_order_table(), ''
+# @app.callback([Output('output-state', 'children'),
+#               Output('select_pair', 'options'),
+#               Output('pair', 'value')],
+#               [Input('add', 'n_clicks')],
+#               State('pair', 'value'),
+#                )
 
-    else:
-        order_clicks += 1
-        resp = ''
-        hi = orders.selected_rows 
-        print(hi)
+# def update_assets(n_clicks, input1):
+#     if n_clicks != 0:
+#         if input1 == None:
+#             return 'Select an asset pair(s), then click "ADD"', get_select_options(), None
+#         opt = [{'label': x, 'value': x} for x in input1]
+#         for i in opt:
+#             if i not in get_select_options():
+#                 dg.create_asset(dg.get_asset_id(i['label']), i['label'])
+#                 dg.collect_data(i['label'])
+#         return f'Asset pair(s) added: {", ".join(input1)}', get_select_options(), None
+#     else:
+#         return 'Select an asset pair(s), then click "ADD"', get_select_options(), None
 
-
-@app.callback([Output('example-graph', 'figure'),
+# major callback
+@app.callback([Output('output-state', 'children'),
+               Output('select_pair', 'options'),
+               Output('pair', 'value'),
+               Output('example-graph', 'figure'),
                Output('asset_to_buy', 'value'),
                Output('output-state1', 'children'),
                Output('open_date', 'value'),
                Output('close_date', 'value'),
                Output('quantity', 'value'),
-               Output('order_details', 'children')],
-              [Input('select_pair', 'value'),
+               Output('order_details', 'children'),
+               Output('order_remove_details', 'children'),
+               Output('remove_asset_status', 'children'),
+               ],
+              [Input('add', 'n_clicks'),
+               Input('select_pair', 'value'),
                Input('buy', 'n_clicks'),
+               Input('remove_order', 'n_clicks'),
+               Input('remove_asset', 'n_clicks'),
                 ],
-              [State('asset_to_buy', 'value'),
+              [State('pair', 'value'),
+               State('asset_to_buy', 'value'),
                State('open_date', 'value'),
                State('close_date', 'value'),
                State('quantity', 'value')],
                )
 
-def update_output_graph(asset_pair_drop, n_clicks, asset_pair_text, open, close, quantity):
-    # drop down trigger
-    global clicks
-    if n_clicks == clicks:
-        fig = create_graph(asset_pair_drop)
-        return fig, asset_pair_drop, '', '', '', '', create_order_table()
+# update basically everything on the screen
+def update_output_graph(a_clicks, asset_pair_drop, b_clicks, o_clicks, ass_clicks, a_pair, asset_pair_text, open, close, quantity):
+    print(asset_pair_drop, b_clicks, o_clicks, a_clicks, asset_pair_text, open, close, quantity)
+    global add_clicks, buy_clicks, order_clicks, asset_clicks
+    if a_clicks != add_clicks:
+        add_clicks += 1
+        if a_pair == None:
+            ans = 'Select an asset pair(s), then click "ADD"'
+        opt = [{'label': x, 'value': x} for x in a_pair]
+        for i in opt:
+            if i not in get_select_options():
+                dg.create_asset(dg.get_asset_id(i['label']), i['label'])
+                dg.collect_data(i['label'])
+        ans = f'Asset pair(s) added: {", ".join(a_pair)}'
+        return ans, get_select_options(), None, dash.no_update, dash.no_update, dash.no_update, \
+         dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update
 
-    # button press trigger
-    else:
-        
-        clicks += 1
+    # buy an asset!
+    elif b_clicks != buy_clicks:
+        buy_clicks += 1
         ans = ''
         try:
             dg.create_order(asset_pair_text, open, close, quantity)
@@ -166,7 +202,32 @@ def update_output_graph(asset_pair_drop, n_clicks, asset_pair_text, open, close,
         except:
             ans = 'Order couldnt be placed!'
         fig = create_graph(asset_pair_drop)
-        return fig, asset_pair_drop, ans, '', '', '', create_order_table()
+        return dash.no_update, dash.no_update, dash.no_update, fig, asset_pair_drop, ans, \
+             dash.no_update, '', '', create_order_table(), '', ''
+
+    # remove orders
+    elif o_clicks != order_clicks:
+        order_clicks += 1
+        ans = ''
+        fig = create_graph(asset_pair_drop)
+        return dash.no_update, dash.no_update, dash.no_update, fig, asset_pair_drop, \
+             '', '', '', '', create_order_table(), ans, ''
+
+    # remove asset from history
+    elif ass_clicks != asset_clicks:
+        asset_clicks += 1
+        ans = dg.remove_asset(asset_pair_drop)
+        fig = create_graph('')
+        return dash.no_update, get_select_options(), None, fig, '', '', \
+             '', '', '', create_order_table(), '', ans
+
+    # update graph based on drop down selection
+    else:
+        fig = create_graph(asset_pair_drop)
+        return dash.no_update, dash.no_update, dash.no_update, fig, asset_pair_drop, '', \
+             '', '', '', create_order_table(), '', ''
+
+
 
 def create_graph(asset):
     port_title = 'Portfolio Balance'
@@ -179,8 +240,6 @@ def create_graph(asset):
         fig.update_yaxes(tickformat = '$', row=1, col=2)
         return fig
     
-    # asset graph
-    print(asset)
     df = dg.get_history(asset)
     open, close = dg.get_orders(asset)
 
@@ -210,26 +269,6 @@ def create_graph(asset):
     return fig
 
 
-@app.callback([Output('output-state', 'children'),
-              Output('select_pair', 'options'),
-              Output('pair', 'value')],
-              [Input('add', 'n_clicks')],
-              State('pair', 'value'),
-               )
-
-def update_assets(n_clicks, input1):
-    if n_clicks != 0:
-        if input1 == None:
-            return 'Select an asset pair(s), then click "ADD"', selected_options, None
-        opt = [{'label': x, 'value': x} for x in input1]
-        for i in opt:
-            if i not in selected_options:
-                dg.create_asset(dg.get_asset_id(i['label']), i['label'])
-                dg.collect_data(i['label'])
-                selected_options.append(i)
-        return f'Asset pair(s) added: {", ".join(input1)}', selected_options, None
-    else:
-        return 'Select an asset pair(s), then click "ADD"', selected_options, None
 
 if __name__ == '__main__':
     # app.run_server()
