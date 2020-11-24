@@ -64,16 +64,20 @@ class Database():
                             PRIMARY KEY (assetID, Timestamp))"
                 create_order_table_stmt = "CREATE TABLE Orders ( \
                             orderID INT AUTO_INCREMENT PRIMARY KEY, \
+                            username VARCHAR(255), \
                             assetID INT, \
                             openDate INT NOT NULL, \
                             closeDate INT NOT NULL, \
                             quantity REAL NOT NULL, \
                             FOREIGN KEY (assetID) REFERENCES Assets(assetID) \
-                            ON DELETE CASCADE ON UPDATE CASCADE);"
-                crate_user_table_stmt = "CREATE TABLE Users ( \
-                            userID INT AUTO_INCREMENT PRIMARY KEY, \
-                            firstName VARCHAR(255) NOT NULL, \
-                            lastName VARCHAR(255) NOT NULL);"
+                            ON DELETE CASCADE ON UPDATE CASCADE), \
+                            FOREIGN KEY (username) REFERENCES Users(username) \
+                            ON DELETE CASCADE ON UPDATE CASCADE)"
+                create_user_table_stmt = "CREATE TABLE Users ( \
+                            username VARCHAR(255) PRIMARY KEY, \
+                            password VARCHAR(255) NOT NULL, \
+                            startBalance REAL NOT NULL, \
+                            accountOpenDate INT NOT NULL)"
                 create_accounts_table_stmt = "CREATE TABLE Accounts ( \
                             accountID INT AUTO_INCREMENT PRIMARY KEY, \
                             userID INT, \
@@ -93,8 +97,8 @@ class Database():
                 use_stmt,
                  create_asset_table_stmt,
                   create_history_table_stmt,
+                  create_user_table_stmt,
                   create_order_table_stmt,
-                  crate_user_table_stmt,
                   create_accounts_table_stmt,
                   create_asset_detail_table_stmt]
 
@@ -140,6 +144,19 @@ class Database():
             connection.commit()
             connection.close()
 
+    def login(self, username, password):
+        sql_stmt = f"SELECT * FROM users where username='{username}'"
+        resp = self.send_query(sql_stmt, helpers.ResponseType.ONE)
+        if resp == None:
+            return False
+        if resp['password'] == password:
+            return True
+
+    def create_account(self, username, password, start, date):
+        ts = helpers.convert_string_to_timestamp(date)
+        sql_stmt = f"INSERT INTO users VALUES ('{username}', '{password}', {start},{ts})"
+        self.send_query(sql_stmt, helpers.ResponseType.NONE)
+
     def create_asset(self, id, pair):
         insert_st = f"INSERT INTO assets VALUES ({id}, '{pair.upper()}')"
         self.send_query(insert_st, helpers.ResponseType.NONE)
@@ -174,11 +191,11 @@ class Database():
         df = df[['Time', 'Close']]
         return df
 
-    def create_order(self, pair, open, close, amount):
+    def create_order(self, pair, open, close, amount, user):
         open = helpers.convert_string_to_timestamp(open)
         close = helpers.convert_string_to_timestamp(close)
         id = self.get_asset_id(pair)
-        sql_stmt = f"INSERT INTO Orders (assetID, openDate, closeDate, Quantity) VALUES ({id},{open}, {close}, {float(amount)})"
+        sql_stmt = f"INSERT INTO Orders (assetID, openDate, closeDate, Quantity) VALUES ({id},{open}, {close}, {float(amount)}, {user})"
         self.send_query(sql_stmt, helpers.ResponseType.NONE)
 
     def remove_order(self, orderIDs):
@@ -221,21 +238,27 @@ class Database():
 
         return open_df, close_df
 
-    def calc_profit(self, pair):
-        start_balance = 10_000
-        date = '2018-01-01'
-        date_ts = helpers.convert_string_to_timestamp(date)
+    def calc_profit(self, pair, user):
         now_ts = datetime.now().timestamp()
+        if user != '':
+            sql = f"SELECT startBalance, accountOpenDate FROM users WHERE username='{user}'"
+            person = self.send_query(sql, helpers.ResponseType.ONE)
+            start_balance = person['startBalance']
+            date = person['accountOpenDate']
+        else:
+            start_balance = 10_000
+            date = '2015-01-01'
+            date = helpers.convert_string_to_timestamp(date)
         data = []
         sql_stmt = "SELECT orderID FROM orders"
         orders = self.send_query(sql_stmt, helpers.ResponseType.ALL)
         if len(orders) == 0:
-            sql_stmt = f"SELECT DISTINCT Timestamp from history WHERE Timestamp >= {date_ts} and Timestamp <= {now_ts}"
+            sql_stmt = f"SELECT DISTINCT Timestamp from history WHERE Timestamp >= {date} and Timestamp <= {now_ts}"
             dates = self.send_query(sql_stmt, helpers.ResponseType.ALL)
             df = pd.DataFrame(dates)
             all_days = []
             if len(df) == 0:
-                date_dt = helpers.convert_string_to_date(date)
+                date_dt = helpers.convert_timestamp_to_date_single(date)
                 all_days.append(date_dt)
                 while date_dt < datetime.now():
                     date_dt += timedelta(days=1)
@@ -252,7 +275,7 @@ class Database():
             rets_df = pd.DataFrame(rets, index=df['Timestamp'], columns=['Balance'])
             rets_df = rets_df.dropna()
             data.append(rets_df)
-        sql_stmt = f"SELECT DISTINCT Timestamp from history WHERE Timestamp >= {date_ts} and Timestamp <= {now_ts}"
+        sql_stmt = f"SELECT DISTINCT Timestamp from history WHERE Timestamp >= {date} and Timestamp <= {now_ts}"
         dates = self.send_query(sql_stmt, helpers.ResponseType.ALL)
         df = pd.DataFrame(dates)
         df = df.set_index(df['Timestamp'])
