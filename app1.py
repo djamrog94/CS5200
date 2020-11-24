@@ -1,6 +1,6 @@
 import dash
-import os
 import dash_core_components as dcc
+import dash_bootstrap_components as dbc
 import dash_html_components as html
 from dash.dependencies import Output, Input, State
 import dash_table
@@ -13,14 +13,21 @@ from plotly.subplots import make_subplots
 
 dg = Database()
 
-external_stylesheets = ['https://codepen.io/chriddyp/pen/bWLwgP.css']
+# external_stylesheets = ['https://codepen.io/chriddyp/pen/bWLwgP.css']
 
-app = dash.Dash(__name__, external_stylesheets=external_stylesheets)
+# app = dash.Dash(__name__, external_stylesheets=external_stylesheets, suppress_callback_exceptions=True)
+
+# # app = dash.Dash(__name__, external_stylesheets=[dbc.themes.FLATLY])
+app = dash.Dash(external_stylesheets=[dbc.themes.FLATLY])
+dg = Database()
 
 buy_clicks = 0
 order_clicks = 0
 asset_clicks = 0
 add_clicks = 0
+login_click = 0
+open_click = 0
+user = ''
 
 
 def empty_graph():
@@ -37,8 +44,18 @@ def get_select_options():
     return [{'label': x['name'], 'value': x['name']} for x in opts]
     
 
+MIN_ORDER_HEIGHT = 65
+ROW_HEIGHT = 35
+MAX_HEIGHT = (10 * ROW_HEIGHT) + MIN_ORDER_HEIGHT
+
 def create_order_table():
-    order_df = dg.get_order_details()
+    order_df = dg.get_order_details(user)
+    if len(order_df) == 0:
+        height = MIN_ORDER_HEIGHT
+    elif len(order_df) <= 10:
+        height = MIN_ORDER_HEIGHT + (ROW_HEIGHT * len(order_df))
+    else:
+        height = MAX_HEIGHT
     order_details = dash_table.DataTable(
         data=order_df.to_dict('records'),
         columns=[{'id': c, 'name': c} for c in order_df.columns],
@@ -48,7 +65,7 @@ def create_order_table():
             'textAlign': 'left'
         } for c in ['Date', 'Region']
     ],
-    style_table={'height': 330, 'overflowY': 'auto'},
+    style_table={'height': height, 'width': 'auto', 'overflowY': 'auto'},
 
     style_as_list_view=True,
     filter_action="native",
@@ -58,71 +75,120 @@ def create_order_table():
     selected_rows=[])
     return order_details
 
-app.layout = html.Div(children=[
-    html.H1(children='Hello David'),
+user_input = dbc.FormGroup(
+    [
+        dbc.Label("Username", html_for="example-email"),
+        dbc.Input(type="text", id="username", placeholder="Enter username"),
+        dbc.FormText(
+            "Please enter your username",
+            color="secondary",
+        ),
+    ]
+)
 
-    html.Div(children='''
-        Welcome to paperTrader. Here you can track all of your orders!
-    '''),
+password_input = dbc.FormGroup(
+    [
+        dbc.Label("Password", html_for="example-password"),
+        dbc.Input(
+            type="password",
+            id="password",
+            placeholder="Enter password",
+        ),
+        dbc.FormText(
+            "A password stops mean people taking your stuff", color="secondary"
+        ),
+    ]
+)
 
-    
-    html.Div([
-        html.Label('Add Asset Pair'),
-        dcc.Dropdown(
-            id='pair',
-            options = get_all_pairs(),
-            value=[],
-            multi=True),
+user_form = dbc.Form([user_input, password_input])
 
-        html.Button(id='add', n_clicks=0, children='Add'),
+user_modal = html.Div(
+    [
+        dbc.Button("Login", id="open"),
+        dbc.Modal(
+            [
+                dbc.ModalHeader("User Login"),
+                dbc.ModalBody(user_form),
+                dbc.ModalFooter(
+                    dbc.Button("Submit", id="user_submit", className="ml-auto")
+                ),
+            ],
+            id="modal",
+        ),
+    ]
+)
+
+app.layout = html.Div([
+    html.Div(id='user', style={'display': 'none'}),
+    dbc.Row(dbc.Col(user_modal), style={'float': 'right'}),
+    html.H1(f'WELCOME TO PAPERTRADER'),
+    html.Div(id='title'),
+    dbc.Row(dbc.Col(
+        [dbc.Label('Add Asset Pair:'),
+        dbc.Select(
+            id="pair",
+            options=get_all_pairs(),
+        ),
+    dbc.Button(id='add', n_clicks=0, children='Add Asset'),
         html.Div(id='output-state')
-    ], style={'width': '49%'}),
+        ], width=3
+    )),
+    dbc.Row(dbc.Col(
+        [dbc.Label('Asset Pair:'),
+        dbc.Select(
+            id="select_pair",
+            options=get_select_options(),
+        ),
+        dbc.Button(id='remove_asset', n_clicks=0, children='Remove Asset'),
+        html.Div(id='remove_asset_status')
+    ], width=3
+    )),
+    dbc.Row([dbc.Col(
+        dcc.Graph(
+            id='example-graph',
+            figure=empty_graph()) 
+    )]),
+    dbc.Row([dbc.Col([
+        dbc.Label('Place Order:'),
+        html.Div([dbc.InputGroup(dbc.Input(id='asset_to_buy', placeholder='Asset Pair')),
+        dbc.InputGroup(dbc.Input(id='open_date',placeholder='Open Date')),
+        dbc.InputGroup(dbc.Input(id='close_date',placeholder='Close Date')),
+        dbc.InputGroup(dbc.Input(id='quantity',placeholder='Quantity'))
+        ], style={'width': '49%'}),
+        dbc.Button(id='place_order', n_clicks=0, children='Place Order'),
+        html.Div(id='output-state1')
 
-    html.Div([
-        html.Div([
-            html.Label('Asset Pair'),
-            dcc.Dropdown(
-                id='select_pair',
-                options=get_select_options(),
-                value = ''
-            ),
-            html.Button(id='remove_asset', n_clicks=0, children='Remove Asset'),
-            html.Div(id='remove_asset_status')
+    ]), dbc.Col([
+        dbc.Label('Trade History'),
+        html.Div(id='order_details', children=create_order_table()),
+        dbc.Button(id='remove_order', n_clicks=0, children='Remove Order'),
+        html.Div(id='order_remove_details')
+    ],  width={"size": 6, "order": 2, "offset": 1})])
+]) 
 
-        ]),
-    ], style={'width': '49%'}),
-            dcc.Graph(
-                id='example-graph',
-                figure=empty_graph(),
-            ),
+@app.callback(
+    [Output("modal", "is_open"),Output("user", "children")],
+    [Input("open", "n_clicks"), Input("user_submit", "n_clicks")],
+    [State("modal", "is_open"), State("username", "value"),
+     State("password", "value")],
+)
+def toggle_modal(n1, n2, is_open, name, pw):
+    if n1 or n2:
+        test = dg.login(name, pw)
+        if test:
+            return not is_open, name
+        else:
+            return not is_open, dash.no_update
+    return is_open, dash.no_update
 
-    html.Div([
-        html.Div([
-            html.Label('Asset Pair'),
-            dcc.Input(id='asset_to_buy', type='text', value='')], style={'width': '49%', 'float': 'left'}),
-        html.Div([
-             html.Label('Trade History'),
-             dcc.Dropdown(
-            id='trade_history',
-            options = get_all_pairs(),
-            value=''),
-            html.Div(id='order_details', children=create_order_table()),
-            html.Button(id='remove_order', n_clicks=0, children='Remove Order(s)'),
-            html.Div(id='order_remove_details')
-        ], style={'width': '49%', 'float': 'right'}),
+@app.callback(Output('title', 'children'), Input('user', 'children'))
+def get_name(user1):
+    global user
+    if user1 != None:
+        user = user1
+        return html.H2(f'Hello, {user1}!')
+    return dash.no_update
 
-            html.Label('Open Date | Format YYYY-MM-DD'),
-            dcc.Input(id='open_date', type='text', value=''),
-            html.Label('Close Date'),
-            dcc.Input(id='close_date', type='text', value=''),
-            html.Label('Dollar Value'),
-            dcc.Input(id='quantity', type='text', value=''),
-            html.Button(id='buy', n_clicks=0, children='Place Trade'),
-            html.Div(id='output-state1'),
-         
-
-    ]), html.A(html.Button('Log Out!'), href='/logout')
-])
 
 # major callback
 @app.callback([Output('output-state', 'children'),
@@ -140,9 +206,10 @@ app.layout = html.Div(children=[
                ],
               [Input('add', 'n_clicks'),
                Input('select_pair', 'value'),
-               Input('buy', 'n_clicks'),
+               Input('place_order', 'n_clicks'),
                Input('remove_order', 'n_clicks'),
                Input('remove_asset', 'n_clicks'),
+               Input('title', 'children'),
                 ],
               [State('pair', 'value'),
                State('asset_to_buy', 'value'),
@@ -150,10 +217,10 @@ app.layout = html.Div(children=[
                State('close_date', 'value'),
                State('quantity', 'value'),
                State('order_details', 'children')]
-               )
+)
 
 # update basically everything on the screen
-def update_output_graph(a_clicks, asset_pair_drop, b_clicks, o_clicks, ass_clicks, a_pair, asset_pair_text, open, close, quantity, order_table):
+def update_output_graph(a_clicks, asset_pair_drop, b_clicks, o_clicks, ass_clicks, user, a_pair, asset_pair_text, open, close, quantity, order_table):
     global add_clicks, buy_clicks, order_clicks, asset_clicks
     if a_clicks != add_clicks:
         add_clicks += 1
@@ -174,7 +241,7 @@ def update_output_graph(a_clicks, asset_pair_drop, b_clicks, o_clicks, ass_click
         buy_clicks += 1
         ans = ''
         try:
-            dg.create_order(asset_pair_text, open, close, quantity)
+            dg.create_order(asset_pair_text, open, close, quantity, user)
             ans = f'Order placed to buy ${quantity} of {asset_pair_text} completed!'
             
         except:
@@ -212,20 +279,23 @@ def update_output_graph(a_clicks, asset_pair_drop, b_clicks, o_clicks, ass_click
 
 def create_graph(asset):
     port_title = 'Portfolio Balance'
-    if asset == '':
-        pl = dg.calc_profit('port')
-        fig = make_subplots(rows=1, cols=2, subplot_titles=('No Asset Selected', port_title))
-        fig.add_trace(go.Scatter(x=[0],y=[0],mode='lines'), row=1, col=1)
-        fig.add_trace(go.Scatter(x=pl['Time'],y=pl['Balance'],mode='lines'), row=1, col=2)
-        fig.update_yaxes(tickformat = '$', row=1, col=1)
-        fig.update_yaxes(tickformat = '$', row=1, col=2)
-        return fig
+    if asset is None:
+        if user == '':
+            return empty_graph()
+        else:
+            pl = dg.calc_profit('port', user)
+            fig = make_subplots(rows=1, cols=2, subplot_titles=('No Asset Selected', port_title))
+            fig.add_trace(go.Scatter(x=[0],y=[0],mode='lines'), row=1, col=1)
+            fig.add_trace(go.Scatter(x=pl['Time'],y=pl['Balance'],mode='lines'), row=1, col=2)
+            fig.update_yaxes(tickformat = '$', row=1, col=1)
+            fig.update_yaxes(tickformat = '$', row=1, col=2)
+            return fig
     
     df = dg.get_history(asset)
     open, close = dg.get_orders(asset)
 
     # personal graph
-    pl = dg.calc_profit('port')
+    pl = dg.calc_profit('port', user)
 
     if open is None:
         fig = make_subplots(rows=1, cols=2, subplot_titles=(f'{asset} History', port_title))

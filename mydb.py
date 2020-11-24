@@ -152,9 +152,11 @@ class Database():
         if resp['password'] == password:
             return True
 
-    def create_account(self, username, password, start, date):
+    def create_account(self, username, password, fName, lName, start, date):
         ts = helpers.convert_string_to_timestamp(date)
-        sql_stmt = f"INSERT INTO users VALUES ('{username}', '{password}', {start},{ts})"
+        sql_stmt = f"INSERT INTO users VALUES ('{username}', '{password}', '{fName}', '{lName}')"
+        self.send_query(sql_stmt, helpers.ResponseType.NONE)
+        sql_stmt = f"INSERT INTO portfolio (openDate, startingBalance, username) VALUES ({ts}, {start}, '{username}')"
         self.send_query(sql_stmt, helpers.ResponseType.NONE)
 
     def create_asset(self, id, pair):
@@ -195,7 +197,7 @@ class Database():
         open = helpers.convert_string_to_timestamp(open)
         close = helpers.convert_string_to_timestamp(close)
         id = self.get_asset_id(pair)
-        sql_stmt = f"INSERT INTO Orders (assetID, openDate, closeDate, Quantity) VALUES ({id},{open}, {close}, {float(amount)}, {user})"
+        sql_stmt = f"INSERT INTO Orders (assetID, openDate, closeDate, Quantity, username) VALUES ({id},{open}, {close}, {float(amount)}, '{user}')"
         self.send_query(sql_stmt, helpers.ResponseType.NONE)
 
     def remove_order(self, orderIDs):
@@ -203,8 +205,8 @@ class Database():
             sql_stmt = f"DELETE FROM orders WHERE orderID='{order}'"
             self.send_query(sql_stmt, helpers.ResponseType.NONE)
 
-    def get_order_details(self):
-        resp = self.send_procedure('order_details', [], helpers.ResponseType.ALL)
+    def get_order_details(self, user):
+        resp = self.send_procedure('order_details', [user], helpers.ResponseType.ALL)
         df = pd.DataFrame(resp)
         if len(df) == 0:
             df = pd.DataFrame(None, columns=['Order ID', 'Asset Name', 'Open Date', 'Close Date', 'Quantity', 'Profit / Loss'])
@@ -241,16 +243,14 @@ class Database():
     def calc_profit(self, pair, user):
         now_ts = datetime.now().timestamp()
         if user != '':
-            sql = f"SELECT startBalance, accountOpenDate FROM users WHERE username='{user}'"
+            sql = f"SELECT startingBalance, openDate FROM portfolio WHERE username='{user}'"
             person = self.send_query(sql, helpers.ResponseType.ONE)
-            start_balance = person['startBalance']
-            date = person['accountOpenDate']
+            start_balance = person['startingBalance']
+            date = person['openDate']
         else:
-            start_balance = 10_000
-            date = '2015-01-01'
-            date = helpers.convert_string_to_timestamp(date)
+            return pd.DataFrame([0])
         data = []
-        sql_stmt = "SELECT orderID FROM orders"
+        sql_stmt = f"SELECT orderID FROM orders WHERE username = '{user}'"
         orders = self.send_query(sql_stmt, helpers.ResponseType.ALL)
         if len(orders) == 0:
             sql_stmt = f"SELECT DISTINCT Timestamp from history WHERE Timestamp >= {date} and Timestamp <= {now_ts}"
@@ -258,7 +258,7 @@ class Database():
             df = pd.DataFrame(dates)
             all_days = []
             if len(df) == 0:
-                date_dt = helpers.convert_timestamp_to_date_single(date)
+                date_dt = helpers.convert_timestamp_to_date_single(int(date))
                 all_days.append(date_dt)
                 while date_dt < datetime.now():
                     date_dt += timedelta(days=1)
@@ -287,6 +287,7 @@ class Database():
         df = df[['Timestamp', 'Balance']]
         df['Time'] = df.apply(helpers.convert_timestamp_to_date, axis=1)
         df = df[['Time', 'Balance']]
+        start_balance = float(start_balance)
         for i in range(len(df)):
             if i == 0:
                  df.iat[i,1] += start_balance

@@ -67,23 +67,22 @@ AND assetID=(SELECT assetID FROM orders WHERE orderID=oid);
 END$$
 DELIMITER ;
 
-USE papertrader;
 DROP PROCEDURE IF EXISTS order_details;
 DELIMITER $$
 CREATE PROCEDURE order_details
 ( 
-
+IN user VARCHAR(255)
 )
 BEGIN
 SELECT orderID as "Order ID", name as "Asset Name", FROM_UNIXTIME(openDate, "%m/%d/%Y") as "Open Date", FROM_UNIXTIME(closeDate, "%m/%d/%Y") as "Close Date", quantity as Quantity, FORMAT(b.close - a.close, 'C') as "Profit / Loss"
  FROM Orders JOIN Assets on Orders.assetID=Assets.assetID
 LEFT JOIN history as a ON orders.assetID=a.assetID AND orders.openDate=a.Timestamp
 LEFT JOIN history as b ON orders.assetID=b.assetID AND orders.closeDate=b.Timestamp
+WHERE orders.username=user
 ORDER BY orderID;
 END$$
 DELIMITER ;
 
-
-
+call order_details('test')
 
 

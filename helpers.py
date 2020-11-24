@@ -2,8 +2,8 @@ from datetime import datetime, timezone
 from enum import Enum
 
 def convert_string_to_timestamp(date_string):
-        dt = datetime.strptime(date_string, '%Y-%m-%d')
-        return dt.replace(tzinfo=timezone.utc).timestamp()
+    dt = datetime.strptime(date_string, '%Y-%m-%d')
+    return dt.replace(tzinfo=timezone.utc).timestamp()
 
 def convert_timestamp_to_date(r):
     return datetime.utcfromtimestamp(float(r[0]))
