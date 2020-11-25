@@ -1,3 +1,4 @@
+from cryptowatch.utils import log
 import dash
 import dash_core_components as dcc
 import dash_bootstrap_components as dbc
@@ -13,11 +14,6 @@ from plotly.subplots import make_subplots
 
 dg = Database()
 
-# external_stylesheets = ['https://codepen.io/chriddyp/pen/bWLwgP.css']
-
-# app = dash.Dash(__name__, external_stylesheets=external_stylesheets, suppress_callback_exceptions=True)
-
-# # app = dash.Dash(__name__, external_stylesheets=[dbc.themes.FLATLY])
 app = dash.Dash(external_stylesheets=[dbc.themes.FLATLY])
 dg = Database()
 
@@ -27,6 +23,11 @@ asset_clicks = 0
 add_clicks = 0
 login_click = 0
 open_click = 0
+logout_click = 0
+nn1 = 0
+nn2 = 0
+cnn1 = 0
+cnn2 = 0
 user = ''
 
 
@@ -39,12 +40,17 @@ def get_all_pairs():
     return [{'label': x, 'value': x} for x in asset_pairs]
 
 def get_select_options():
-    sql_stmt = f'SELECT * FROM Assets'
+    sql_stmt = f"SELECT assetID FROM user_asset_detail where username='{user}'"
+    opts = dg.send_query(sql_stmt, helpers.ResponseType.ALL)
+    return [{'label': dg.get_asset_name(x['assetID']), 'value': dg.get_asset_name(x['assetID'])} for x in opts]
+    
+def get_all_saved():
+    sql_stmt = "SELECT * FROM assets"
     opts = dg.send_query(sql_stmt, helpers.ResponseType.ALL)
     return [{'label': x['name'], 'value': x['name']} for x in opts]
-    
 
-MIN_ORDER_HEIGHT = 65
+
+MIN_ORDER_HEIGHT = 80
 ROW_HEIGHT = 35
 MAX_HEIGHT = (10 * ROW_HEIGHT) + MIN_ORDER_HEIGHT
 
@@ -66,6 +72,12 @@ def create_order_table():
         } for c in ['Date', 'Region']
     ],
     style_table={'height': height, 'width': 'auto', 'overflowY': 'auto'},
+    style_cell={
+        'height': 'auto',
+        # all three widths are needed
+        'minWidth': '20px', 'width': '20px', 'maxWidth': '20px',
+        'whiteSpace': 'normal'
+    },
 
     style_as_list_view=True,
     filter_action="native",
@@ -118,14 +130,112 @@ user_modal = html.Div(
     ]
 )
 
+create_user_input = dbc.FormGroup(
+    [
+        dbc.Label("Username", html_for="example-email"),
+        dbc.Input(type="text", id="create_username", placeholder="Enter username"),
+        dbc.FormText(
+            "Please enter your username",
+            color="secondary",
+        ),
+    ]
+)
+
+create_password_input = dbc.FormGroup(
+    [
+        dbc.Label("Password", html_for="example-password"),
+        dbc.Input(
+            type="password",
+            id="create_password",
+            placeholder="Enter password",
+        ),
+        dbc.FormText(
+            "A password stops mean people taking your stuff", color="secondary"
+        ),
+    ]
+)
+
+first_input = dbc.FormGroup(
+    [
+        dbc.Label("First Name", html_for="example-password"),
+        dbc.Input(
+            id="create_first",
+            placeholder="First Name",
+        ),
+        dbc.FormText(
+            "Please enter your first name.", color="secondary"
+        ),
+    ]
+)
+
+last_input = dbc.FormGroup(
+    [
+        dbc.Label("Last Name", html_for="example-password"),
+        dbc.Input(
+            id="create_last",
+            placeholder="Last Name",
+        ),
+        dbc.FormText(
+            "Please enter your last name.", color="secondary"
+        ),
+    ]
+)
+
+open_input = dbc.FormGroup(
+    [
+        dbc.Label("Account Created Day", html_for="example-password"),
+        dbc.Input(
+            id="create_open",
+            placeholder="What day did you open your account?",
+        ),
+        dbc.FormText(
+            "Please enter the day you opened your account in YYYY-MM-DD format.", color="secondary"
+        ),
+    ]
+)
+
+balance_input = dbc.FormGroup(
+    [
+        dbc.Label("Starting Balance", html_for="example-password"),
+        dbc.Input(
+            id="create_balance",
+            placeholder="Starting Balance",
+        ),
+        dbc.FormText(
+            "Please enter the starting balance for your account.", color="secondary"
+        ),
+    ]
+)
+
+account_form = dbc.Form([create_user_input, create_password_input, first_input, last_input, open_input, balance_input])
+
+account_modal = html.Div(
+    [
+        dbc.Button("Create Account", id="create_account_button"),
+        dbc.Modal(
+            [
+                dbc.ModalHeader("Create Account"),
+                dbc.ModalBody(account_form),
+                dbc.ModalFooter(
+                    dbc.Button("Submit", id="account_submit", className="ml-auto")
+                ),
+            ],
+            id="account_modal",
+        ),
+    ]
+)
+
+
 app.layout = html.Div([
+    html.Div(id='alert'),
+    html.Div(id='alert1'),
     html.Div(id='user', style={'display': 'none'}),
-    dbc.Row(dbc.Col(user_modal), style={'float': 'right'}),
+    dbc.Row([dbc.Col(user_modal), dbc.Col(account_modal), dbc.Col(dbc.Button(id='logout', n_clicks=0, children='Logout'))], style={'float': 'right'}),
     html.H1(f'WELCOME TO PAPERTRADER'),
     html.Div(id='title'),
     dbc.Row(dbc.Col(
         [dbc.Label('Add Asset Pair:'),
-        dbc.Select(
+        dcc.Dropdown(
             id="pair",
             options=get_all_pairs(),
         ),
@@ -135,7 +245,7 @@ app.layout = html.Div([
     )),
     dbc.Row(dbc.Col(
         [dbc.Label('Asset Pair:'),
-        dbc.Select(
+        dcc.Dropdown(
             id="select_pair",
             options=get_select_options(),
         ),
@@ -150,45 +260,90 @@ app.layout = html.Div([
     )]),
     dbc.Row([dbc.Col([
         dbc.Label('Place Order:'),
-        html.Div([dbc.InputGroup(dbc.Input(id='asset_to_buy', placeholder='Asset Pair')),
-        dbc.InputGroup(dbc.Input(id='open_date',placeholder='Open Date')),
-        dbc.InputGroup(dbc.Input(id='close_date',placeholder='Close Date')),
-        dbc.InputGroup(dbc.Input(id='quantity',placeholder='Quantity'))
-        ], style={'width': '49%'}),
+        dbc.Form([dbc.FormGroup(dbc.Input(id='asset_to_buy', placeholder='Asset Pair')),
+        dbc.FormGroup(dbc.Input(id='open_date',placeholder='Open Date')),
+        dbc.FormGroup(dbc.Input(id='close_date',placeholder='Close Date')),
+        dbc.FormGroup(dbc.Input(id='quantity',placeholder='Quantity'))]),
         dbc.Button(id='place_order', n_clicks=0, children='Place Order'),
         html.Div(id='output-state1')
-
-    ]), dbc.Col([
+    ], width=3),
+     dbc.Col([
         dbc.Label('Trade History'),
         html.Div(id='order_details', children=create_order_table()),
         dbc.Button(id='remove_order', n_clicks=0, children='Remove Order'),
         html.Div(id='order_remove_details')
-    ],  width={"size": 6, "order": 2, "offset": 1})])
-]) 
+    ], width={'size': 5, 'offset': 3})
+    ]),
+   
+    ])
+
 
 @app.callback(
-    [Output("modal", "is_open"),Output("user", "children")],
-    [Input("open", "n_clicks"), Input("user_submit", "n_clicks")],
+    [Output("account_modal", "is_open"),Output("alert", "children")],
+    [Input("create_account_button", "n_clicks"), Input("account_submit", "n_clicks")],
+    [State("account_modal", "is_open"), State("create_username", "value"),
+     State("create_password", "value"), State("create_first", "value"),
+     State("create_last", "value"), State("create_open", "value"), State("create_balance", "value")]
+)
+def toggle_modal(cn1, cn2, is_open, name, pw, first, last, open, balance):
+    global cnn1, cnn2
+
+    if cn1 is None and cn2 is None:
+        return dash.no_update, dash.no_update
+
+    if cn1 != cnn1:
+        cnn1 += 1
+        return not is_open, dash.no_update
+
+    if cn2 != cnn2:
+        cnn2 += 1
+        test = dg.create_account(name, pw, first, last, open, balance)
+        if test:
+            return not is_open, dbc.Alert("Account succesfully created!", color="success", duration=4000)
+        else:
+            return not is_open, dbc.Alert("Account could not be created!", color="danger", duration=4000)
+
+    return is_open
+
+
+
+@app.callback(
+    [Output("modal", "is_open"),
+    Output("user", "children"),
+     Output("username", "value"),
+     Output("password", "value"),
+     Output("alert1", "children")],
+    [Input("open", "n_clicks"), Input("user_submit", "n_clicks"), Input("logout", "n_clicks")],
     [State("modal", "is_open"), State("username", "value"),
      State("password", "value")],
 )
-def toggle_modal(n1, n2, is_open, name, pw):
-    if n1 or n2:
+def toggle_modal(n1, n2, log, is_open, name, pw):
+    global nn1, nn2, logout_click, user
+    if logout_click != None and log != logout_click:
+        logout_click += 1
+        if user == '':
+            message = dbc.Alert("Not logged in!", color="warning", duration=4000)
+        else:
+            message = dbc.Alert("Successfully logged out!", color="success", duration=4000)
+
+        return dash.no_update, '', '', '', message
+
+    if n1 is None and n2 is None:
+        return dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update
+
+    if n1 != nn1:
+        nn1 += 1
+        return not is_open, dash.no_update, dash.no_update, dash.no_update, dash.no_update
+
+    if n2 != nn2:
+        nn2 += 1
         test = dg.login(name, pw)
         if test:
-            return not is_open, name
+            return not is_open, name, '', '', dbc.Alert("Successfully logged in!", color="success", duration=4000)
         else:
-            return not is_open, dash.no_update
-    return is_open, dash.no_update
+            return not is_open, dash.no_update, '', '', dbc.Alert("Incorrect Credentials. Try again!", color="danger", duration=4000)
 
-@app.callback(Output('title', 'children'), Input('user', 'children'))
-def get_name(user1):
-    global user
-    if user1 != None:
-        user = user1
-        return html.H2(f'Hello, {user1}!')
-    return dash.no_update
-
+    return is_open, dash.no_update, dash.no_update, dash.no_update, dash.no_update
 
 # major callback
 @app.callback([Output('output-state', 'children'),
@@ -203,13 +358,15 @@ def get_name(user1):
                Output('order_details', 'children'),
                Output('order_remove_details', 'children'),
                Output('remove_asset_status', 'children'),
+               Output('title', 'children')
                ],
               [Input('add', 'n_clicks'),
                Input('select_pair', 'value'),
                Input('place_order', 'n_clicks'),
                Input('remove_order', 'n_clicks'),
                Input('remove_asset', 'n_clicks'),
-               Input('title', 'children'),
+               Input('user', 'children')
+               
                 ],
               [State('pair', 'value'),
                State('asset_to_buy', 'value'),
@@ -219,26 +376,49 @@ def get_name(user1):
                State('order_details', 'children')]
 )
 
+
 # update basically everything on the screen
 def update_output_graph(a_clicks, asset_pair_drop, b_clicks, o_clicks, ass_clicks, user1, a_pair, asset_pair_text, open, close, quantity, order_table):
-    global add_clicks, buy_clicks, order_clicks, asset_clicks, user
+    global add_clicks, buy_clicks, order_clicks, asset_clicks, logout_click, user
+    if user == '':
+        welcome = html.H2('Hello, Please login!')
+    else:
+        welcome = html.H2(f'Hello, {user.title()}!')
+
+    if user1 is not None and user1 != user:
+        user = user1
+        if user == '':
+            welcome = html.H2('Hello, Please login!')
+        else:
+            welcome = html.H2(f'Hello, {user.title()}!')
+        fig = create_graph(None)
+        return '', get_select_options(), '', fig, '', '', \
+             '', '', '', create_order_table(), '', '', welcome
+        
     if a_clicks != add_clicks:
         add_clicks += 1
+        if user == '':
+            return dash.no_update, get_select_options(), None, dash.no_update, dash.no_update, dash.no_update, \
+         dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update, welcome
         if a_pair == None:
             ans = 'Select an asset pair(s), then click "ADD"'
         else:
-            opt = [{'label': x, 'value': x} for x in a_pair]
-            for i in opt:
-                if i not in get_select_options():
-                    dg.create_asset(dg.get_asset_id(i['label']), i['label'])
-                    dg.collect_data(i['label'])
-            ans = f'Asset pair(s) added: {", ".join(a_pair)}'
+            asset = {'label': a_pair, 'value': a_pair}
+            if asset not in get_all_saved():
+                dg.create_asset(dg.get_asset_id(asset['label']), asset['label'])
+                dg.collect_data(asset['label'])
+            if asset not in get_select_options():
+                dg.add_hist_user(user, a_pair)
+            ans = f'Asset pair(s) added: {a_pair}'
         return ans, get_select_options(), None, dash.no_update, dash.no_update, dash.no_update, \
-         dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update
+         dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update, welcome
 
     # buy an asset!
-    elif b_clicks != buy_clicks:
+    elif b_clicks !=  buy_clicks:
         buy_clicks += 1
+        if user == '':
+            return dash.no_update, get_select_options(), None, dash.no_update, dash.no_update, dash.no_update, \
+         dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update, welcome
         ans = ''
         try:
             dg.create_order(asset_pair_text, open, close, quantity, user)
@@ -248,38 +428,44 @@ def update_output_graph(a_clicks, asset_pair_drop, b_clicks, o_clicks, ass_click
             ans = 'Order couldnt be placed!'
         fig = create_graph(asset_pair_drop)
         return '', dash.no_update, dash.no_update, fig, asset_pair_drop, ans, \
-             '', '', '', create_order_table(), '', ''
+             '', '', '', create_order_table(), '', '', welcome
 
     # remove orders
     elif o_clicks != order_clicks:
         order_clicks += 1
+        if user == '':
+            return dash.no_update, get_select_options(), None, dash.no_update, dash.no_update, dash.no_update, \
+         dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update, welcome
         rows = order_table['props']['selected_rows']
         orderIDs = [order_table['props']['data'][x]['Order ID'] for x in rows]
         dg.remove_order(orderIDs)
         ans = f'Removed {len(rows)} order(s)!'
         fig = create_graph(asset_pair_drop)
         return '', dash.no_update, dash.no_update, fig, asset_pair_drop, \
-             '', '', '', '', create_order_table(), ans, ''
+             '', '', '', '', create_order_table(), ans, '', welcome
 
     # remove asset from history
     elif ass_clicks != asset_clicks:
         asset_clicks += 1
-        ans = dg.remove_asset(asset_pair_drop)
+        if user == '':
+            return dash.no_update, get_select_options(), None, dash.no_update, dash.no_update, dash.no_update, \
+         dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update, welcome
+        ans = dg.remove_asset(user, asset_pair_drop)
         fig = create_graph('')
         return '', get_select_options(), None, fig, '', '', \
-             '', '', '', create_order_table(), '', ans
+             '', '', '', create_order_table(), '', ans, welcome
 
     # update graph based on drop down selection
     else:
         fig = create_graph(asset_pair_drop)
         return '', dash.no_update, dash.no_update, fig, asset_pair_drop, '', \
-             '', '', '', create_order_table(), '', ''
+             '', '', '', create_order_table(), '', '', welcome
 
 
 
 def create_graph(asset):
     port_title = 'Portfolio Balance'
-    if asset is None:
+    if asset is None or user == '' or asset == '':
         if user == '':
             return empty_graph()
         else:

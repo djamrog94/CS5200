@@ -43,13 +43,18 @@ ON DELETE CASCADE ON UPDATE CASCADE,
 FOREIGN KEY (username) REFERENCES Users(username) 
 ON DELETE CASCADE ON UPDATE CASCADE);
 
-CREATE TABLE Asset_Info ( 
-assetName VARCHAR(255) PRIMARY KEY, 
+CREATE TABLE user_asset_detail (
+username VARCHAR(255), 
 assetID INT, 
-altName VARCHAR(255) NOT NULL, 
-assetClass VARCHAR(255) NOT NULL, 
+
 FOREIGN KEY (assetID) REFERENCES Assets(assetID)
-ON DELETE SET NULL ON UPDATE CASCADE); 
+ON DELETE CASCADE ON UPDATE CASCADE,
+
+FOREIGN KEY (username) REFERENCES Users(username)
+ON DELETE CASCADE ON UPDATE CASCADE,
+
+PRIMARY KEY(username, assetID)
+);
 
 DROP PROCEDURE IF EXISTS order_daily_returns;
 DELIMITER $$
@@ -74,7 +79,7 @@ CREATE PROCEDURE order_details
 IN user VARCHAR(255)
 )
 BEGIN
-SELECT orderID as "Order ID", name as "Asset Name", FROM_UNIXTIME(openDate, "%m/%d/%Y") as "Open Date", FROM_UNIXTIME(closeDate, "%m/%d/%Y") as "Close Date", quantity as Quantity, FORMAT(b.close - a.close, 'C') as "Profit / Loss"
+SELECT orderID as "Order ID", name as "Asset Name", FROM_UNIXTIME(openDate, "%m/%d/%Y") as "Open Date", FROM_UNIXTIME(closeDate, "%m/%d/%Y") as "Close Date", FORMAT(quantity, 'C') as Quantity, FORMAT(((b.close / a.close) - 1) * Quantity, 'C') as "Profit / Loss"
  FROM Orders JOIN Assets on Orders.assetID=Assets.assetID
 LEFT JOIN history as a ON orders.assetID=a.assetID AND orders.openDate=a.Timestamp
 LEFT JOIN history as b ON orders.assetID=b.assetID AND orders.closeDate=b.Timestamp
@@ -83,6 +88,24 @@ ORDER BY orderID;
 END$$
 DELIMITER ;
 
-call order_details('test')
+DROP PROCEDURE IF EXISTS remove_asset;
+DELIMITER $$
+CREATE PROCEDURE remove_asset
+( 
+IN user VARCHAR(255),
+IN id INT
+)
+BEGIN
+DELETE FROM user_asset_detail Where assetID=id and username=user;
+
+IF (SELECT COUNT(*) FROM user_asset_detail where assetID=id) = 0 THEN DELETE FROM assets where assetId=id;
+END IF;
+
+END$$
+DELIMITER ;
+
+INSERT INTO users VALUES ('test', 'test', 'dave', 'jam');
+INSERT INTO portfolio (openDate, startingBalance, username) VALUES (1420070400, 15000, 'test');
+
 
 

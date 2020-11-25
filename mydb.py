@@ -20,10 +20,7 @@ class Database():
             connection.close()
             print('Connected to db!')
         except:
-            if self.first_time():
-                print('Successfully set up new schema')
-            else:
-                print('Cannot find database. Make sure MySQL is running, and that "sys" db exists!')
+            print('Cannot find database. Make sure MySQL is running, and that "sys" db exists!')
 
     def create_connection(self):
         return pymysql.connect(host='localhost',
@@ -38,79 +35,6 @@ class Database():
         engine = create_engine(db_data)
         return engine
             
-    def first_time(self):
-        print('First time. Creating schema')
-        try:
-            connection = pymysql.connect(host='localhost',
-                            user='root',
-                            password='password',
-                            db='sys',
-                            charset='utf8mb4',
-                            cursorclass=pymysql.cursors.DictCursor)
-            with connection.cursor() as cursor:
-                create_db_statement = "CREATE DATABASE IF NOT EXISTS paperTrader"
-                use_stmt = 'USE paperTrader'
-                create_asset_table_stmt = "CREATE TABLE Assets \
-                     (assetID INT PRIMARY KEY, name VARCHAR(255) NOT NULL)"
-                create_history_table_stmt = "CREATE TABLE IF NOT EXISTS History ( \
-                            Timestamp INT, \
-                            assetID INT, \
-                            open REAL NOT NULL, \
-                            high REAL NOT NULL, \
-                            low REAL NOT NULL, \
-                            close REAL NOT NULL, \
-                            FOREIGN KEY (assetID) REFERENCES Assets(assetID) \
-                            ON DELETE CASCADE ON UPDATE CASCADE, \
-                            PRIMARY KEY (assetID, Timestamp))"
-                create_order_table_stmt = "CREATE TABLE Orders ( \
-                            orderID INT AUTO_INCREMENT PRIMARY KEY, \
-                            username VARCHAR(255), \
-                            assetID INT, \
-                            openDate INT NOT NULL, \
-                            closeDate INT NOT NULL, \
-                            quantity REAL NOT NULL, \
-                            FOREIGN KEY (assetID) REFERENCES Assets(assetID) \
-                            ON DELETE CASCADE ON UPDATE CASCADE), \
-                            FOREIGN KEY (username) REFERENCES Users(username) \
-                            ON DELETE CASCADE ON UPDATE CASCADE)"
-                create_user_table_stmt = "CREATE TABLE Users ( \
-                            username VARCHAR(255) PRIMARY KEY, \
-                            password VARCHAR(255) NOT NULL, \
-                            startBalance REAL NOT NULL, \
-                            accountOpenDate INT NOT NULL)"
-                create_accounts_table_stmt = "CREATE TABLE Accounts ( \
-                            accountID INT AUTO_INCREMENT PRIMARY KEY, \
-                            userID INT, \
-                            openDate INT NOT NULL, \
-                            startingBalance REAL NOT NULL, \
-                            FOREIGN KEY (userID) REFERENCES Users(userID) \
-                            ON DELETE SET NULL ON UPDATE CASCADE);"
-                create_asset_detail_table_stmt = "CREATE TABLE Asset_Info ( \
-                            assetName VARCHAR(255) PRIMARY KEY, \
-                            assetID INT, \
-                            altName VARCHAR(255) NOT NULL, \
-                            assetClass VARCHAR(255) NOT NULL, \
-                            FOREIGN KEY (assetID) REFERENCES Assets(assetID)\
-                            ON DELETE SET NULL ON UPDATE CASCADE); "
-
-                stmts = [create_db_statement,
-                use_stmt,
-                 create_asset_table_stmt,
-                  create_history_table_stmt,
-                  create_user_table_stmt,
-                  create_order_table_stmt,
-                  create_accounts_table_stmt,
-                  create_asset_detail_table_stmt]
-
-                for stmt in stmts:
-                    cursor.execute(stmt)
-                connection.commit()
-                connection.close()
-            return True
-
-        except:
-            return False
-
     def send_query(self, query, response):
         connection = self.create_connection()
         try:
@@ -152,22 +76,26 @@ class Database():
         if resp['password'] == password:
             return True
 
-    def create_account(self, username, password, fName, lName, start, date):
-        ts = helpers.convert_string_to_timestamp(date)
-        sql_stmt = f"INSERT INTO users VALUES ('{username}', '{password}', '{fName}', '{lName}')"
-        self.send_query(sql_stmt, helpers.ResponseType.NONE)
-        sql_stmt = f"INSERT INTO portfolio (openDate, startingBalance, username) VALUES ({ts}, {start}, '{username}')"
-        self.send_query(sql_stmt, helpers.ResponseType.NONE)
+    def create_account(self, username, password, fName, lName, date, start):
+        try:
+            ts = helpers.convert_string_to_timestamp(date)
+            sql_stmt = f"INSERT INTO users VALUES ('{username}', '{password}', '{fName}', '{lName}')"
+            self.send_query(sql_stmt, helpers.ResponseType.NONE)
+            sql_stmt = f"INSERT INTO portfolio (openDate, startingBalance, username) VALUES ({ts}, {start}, '{username}')"
+            self.send_query(sql_stmt, helpers.ResponseType.NONE)
+            return True
+        except:
+            return False
 
     def create_asset(self, id, pair):
         insert_st = f"INSERT INTO assets VALUES ({id}, '{pair.upper()}')"
         self.send_query(insert_st, helpers.ResponseType.NONE)
 
-    def remove_asset(self, pair):
-        id = self.get_asset_id(pair)
+    def remove_asset(self, user, pair):
         try:
-            sql_stmt = f"DELETE FROM assets WHERE assetID='{id}'"
-            self.send_query(sql_stmt, helpers.ResponseType.NONE)
+            id = self.get_asset_id(pair)
+            args = [user, id]
+            self.send_procedure('remove_asset', args, helpers.ResponseType.NONE)
             return f'Successfully removed {pair} from database!'
         except:
             return f'Failed to remove {pair} from database!'
@@ -211,6 +139,11 @@ class Database():
         if len(df) == 0:
             df = pd.DataFrame(None, columns=['Order ID', 'Asset Name', 'Open Date', 'Close Date', 'Quantity', 'Profit / Loss'])
         return df
+
+    def add_hist_user(self, user, pair):
+        id = self.get_asset_id(pair)
+        sql_stmt = f"INSERT INTO user_asset_detail VALUES ('{user}', '{id}')"
+        self.send_query(sql_stmt, helpers.ResponseType.NONE)
 
     def get_orders(self, pair):
         id = self.get_asset_id(pair)
@@ -269,6 +202,7 @@ class Database():
             args = [order['orderID']]
             resp = self.send_procedure('order_daily_returns', args, helpers.ResponseType.ALL)
             df = pd.DataFrame(resp)
+            df = df.dropna()
             quantity = df.iloc[0]['Quantity']
             rets = np.cumprod(1 + df['percChange'].values) - 1
             rets = rets * quantity
@@ -309,8 +243,13 @@ class Database():
             if (market.pair).upper() == pair:
                 return market.id
 
+    def get_asset_name(self, id):
+        sql_stmt = f"SELECT name FROM assets where assetID='{id}'"
+        resp = self.send_query(sql_stmt, helpers.ResponseType.ONE)
+        return resp['name']
+
 if __name__ == "__main__":
     db = Database()
-    db.get_order_details()
+    db.calc_profit('hi', 'test')
 
 
