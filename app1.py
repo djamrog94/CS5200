@@ -220,8 +220,8 @@ def get_name(user1):
 )
 
 # update basically everything on the screen
-def update_output_graph(a_clicks, asset_pair_drop, b_clicks, o_clicks, ass_clicks, user, a_pair, asset_pair_text, open, close, quantity, order_table):
-    global add_clicks, buy_clicks, order_clicks, asset_clicks
+def update_output_graph(a_clicks, asset_pair_drop, b_clicks, o_clicks, ass_clicks, user1, a_pair, asset_pair_text, open, close, quantity, order_table):
+    global add_clicks, buy_clicks, order_clicks, asset_clicks, user
     if a_clicks != add_clicks:
         add_clicks += 1
         if a_pair == None:
