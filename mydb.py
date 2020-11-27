@@ -137,7 +137,8 @@ class Database():
         resp = self.send_procedure('order_details', [user], helpers.ResponseType.ALL)
         df = pd.DataFrame(resp)
         if len(df) == 0:
-            df = pd.DataFrame(None, columns=['Order ID', 'Asset Name', 'Open Date', 'Close Date', 'Quantity', 'Profit / Loss'])
+            df = pd.DataFrame(None, columns=['ID', 'Asset', 'Open', 'Close', 'Quantity', 'P/L'])
+
         return df
 
     def add_hist_user(self, user, pair):

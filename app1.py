@@ -71,20 +71,12 @@ def create_order_table():
             'textAlign': 'left'
         } for c in ['Date', 'Region']
     ],
-    style_table={'height': height, 'width': 'auto', 'overflowY': 'auto'},
-    style_cell={
-        'height': 'auto',
-        # all three widths are needed
-        'minWidth': '20px', 'width': '20px', 'maxWidth': '20px',
-        'whiteSpace': 'normal'
-    },
 
     style_as_list_view=True,
-    filter_action="native",
-    sort_action="native",
-    sort_mode="multi",
     row_selectable='multi',
-    selected_rows=[])
+    selected_rows=[]
+    )
+
     return order_details
 
 user_input = dbc.FormGroup(
@@ -225,7 +217,6 @@ account_modal = html.Div(
     ]
 )
 
-
 app.layout = html.Div([
     html.Div(id='alert'),
     html.Div(id='alert1'),
@@ -269,11 +260,12 @@ app.layout = html.Div([
     ], width=3),
      dbc.Col([
         dbc.Label('Trade History'),
-        html.Div(id='order_details', children=create_order_table()),
+        html.Div(id='order_details', children=create_order_table(), style={'padding-left': "0px", 'padding-right': "0px", 'padding-top': "0px", 'padding-bottom': "0px"}),
         dbc.Button(id='remove_order', n_clicks=0, children='Remove Order'),
         html.Div(id='order_remove_details')
     ], width={'size': 5, 'offset': 3})
-    ]),
+    ])
+
    
     ])
 
