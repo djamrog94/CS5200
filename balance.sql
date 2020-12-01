@@ -79,7 +79,7 @@ CREATE PROCEDURE order_details
 IN user VARCHAR(255)
 )
 BEGIN
-SELECT orderID as "Order ID", name as "Asset Name", FROM_UNIXTIME(openDate, "%m/%d/%Y") as "Open Date", FROM_UNIXTIME(closeDate, "%m/%d/%Y") as "Close Date", FORMAT(quantity, 'C') as Quantity, FORMAT(((b.close / a.close) - 1) * Quantity, 'C') as "Gain / Loss"
+SELECT orderID as "Order ID", name as "Asset Name", DATE_ADD(FROM_UNIXTIME(openDate, "%Y/%m/%d"), INTERVAL 1 DAY) as "Open Date", DATE_ADD(FROM_UNIXTIME(closeDate, "%Y/%m/%d"), INTERVAL 1 DAY) as "Close Date", FORMAT(quantity, 'C') as Quantity, FORMAT(((b.close / a.close) - 1) * Quantity, 'C') as "Gain / Loss"
  FROM Orders JOIN Assets on Orders.assetID=Assets.assetID
 LEFT JOIN history as a ON orders.assetID=a.assetID AND orders.openDate=a.Timestamp
 LEFT JOIN history as b ON orders.assetID=b.assetID AND orders.closeDate=b.Timestamp

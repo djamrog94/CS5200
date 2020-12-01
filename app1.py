@@ -1,12 +1,9 @@
-from cryptowatch.utils import log
 import dash
 import dash_core_components as dcc
 import dash_bootstrap_components as dbc
 import dash_html_components as html
 from dash.dependencies import Output, Input, State
 import dash_table
-import plotly.express as px
-import pandas as pd
 import helpers
 from mydb import Database
 import plotly.graph_objects as go
@@ -32,8 +29,18 @@ user = ''
 
 
 def empty_graph():
-    df = pd.DataFrame([0])
-    return px.line(df)
+    data = ['Empty', [0], [0]]
+    x = data[1]
+    y = data[2]
+    fig = go.Figure(data=go.Scatter(name='No Graph',x=x, y=y))
+    fig.update_layout(
+    title={
+        'text': "NO GRAPH",
+        'y':0.9,
+        'x':0.5,
+        'xanchor': 'center',
+        'yanchor': 'top'})
+    return fig
 
 def get_all_pairs():
     asset_pairs = dg.get_asset_pairs()
@@ -56,12 +63,6 @@ MAX_HEIGHT = (10 * ROW_HEIGHT) + MIN_ORDER_HEIGHT
 
 def create_order_table():
     order_df = dg.get_order_details(user)
-    if len(order_df) == 0:
-        height = MIN_ORDER_HEIGHT
-    elif len(order_df) <= 10:
-        height = MIN_ORDER_HEIGHT + (ROW_HEIGHT * len(order_df))
-    else:
-        height = MAX_HEIGHT
     order_details = dash_table.DataTable(
         data=order_df.to_dict('records'),
         columns=[{'id': c, 'name': c} for c in order_df.columns],
@@ -217,11 +218,14 @@ account_modal = html.Div(
     ]
 )
 
+button_bar = dbc.ButtonGroup([user_modal, account_modal, dbc.Button(id='logout', n_clicks=0, children='Logout')])
+
 app.layout = html.Div([
     html.Div(id='alert'),
     html.Div(id='alert1'),
+    html.Div(id='alert2'),
     html.Div(id='user', style={'display': 'none'}),
-    dbc.Row([dbc.Col(user_modal), dbc.Col(account_modal), dbc.Col(dbc.Button(id='logout', n_clicks=0, children='Logout'))], style={'float': 'right'}),
+    dbc.Row(button_bar, style={'width': '25%','float': 'right'}),
     html.H1(f'WELCOME TO PAPERTRADER'),
     html.Div(id='title'),
     dbc.Row(dbc.Col(
@@ -260,7 +264,7 @@ app.layout = html.Div([
     ], width=3),
      dbc.Col([
         dbc.Label('Trade History'),
-        html.Div(id='order_details', children=create_order_table(), style={'padding-left': "0px", 'padding-right': "0px", 'padding-top': "0px", 'padding-bottom': "0px"}),
+        html.Div(id='order_details', children=create_order_table()),
         dbc.Button(id='remove_order', n_clicks=0, children='Remove Order'),
         html.Div(id='order_remove_details')
     ], width={'size': 5, 'offset': 3})
@@ -350,7 +354,8 @@ def toggle_modal(n1, n2, log, is_open, name, pw):
                Output('order_details', 'children'),
                Output('order_remove_details', 'children'),
                Output('remove_asset_status', 'children'),
-               Output('title', 'children')
+               Output('title', 'children'),
+               Output('alert2', 'children')
                ],
               [Input('add', 'n_clicks'),
                Input('select_pair', 'value'),
@@ -372,6 +377,7 @@ def toggle_modal(n1, n2, log, is_open, name, pw):
 # update basically everything on the screen
 def update_output_graph(a_clicks, asset_pair_drop, b_clicks, o_clicks, ass_clicks, user1, a_pair, asset_pair_text, open, close, quantity, order_table):
     global add_clicks, buy_clicks, order_clicks, asset_clicks, logout_click, user
+    login_first = dbc.Alert("You must login first!", color="danger", duration=2000)
     if user == '':
         welcome = html.H2('Hello, Please login!')
     else:
@@ -385,13 +391,13 @@ def update_output_graph(a_clicks, asset_pair_drop, b_clicks, o_clicks, ass_click
             welcome = html.H2(f'Hello, {user.title()}!')
         fig = create_graph(None)
         return '', get_select_options(), '', fig, '', '', \
-             '', '', '', create_order_table(), '', '', welcome
+             '', '', '', create_order_table(), '', '', welcome, None
         
     if a_clicks != add_clicks:
         add_clicks += 1
         if user == '':
             return dash.no_update, get_select_options(), None, dash.no_update, dash.no_update, dash.no_update, \
-         dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update, welcome
+         dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update, welcome, login_first
         if a_pair == None:
             ans = 'Select an asset pair(s), then click "ADD"'
         else:
@@ -401,16 +407,18 @@ def update_output_graph(a_clicks, asset_pair_drop, b_clicks, o_clicks, ass_click
                 dg.collect_data(asset['label'])
             if asset not in get_select_options():
                 dg.add_hist_user(user, a_pair)
-            ans = f'Asset pair(s) added: {a_pair}'
+                ans = f'Asset pair(s) added: {a_pair}'
+            else:
+                ans = f'Asset pair(s) already been added!: {a_pair}'
         return ans, get_select_options(), None, dash.no_update, dash.no_update, dash.no_update, \
-         dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update, welcome
+         dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update, welcome, None
 
     # buy an asset!
     elif b_clicks !=  buy_clicks:
         buy_clicks += 1
         if user == '':
             return dash.no_update, get_select_options(), None, dash.no_update, dash.no_update, dash.no_update, \
-         dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update, welcome
+         dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update, welcome, login_first
         ans = ''
         try:
             dg.create_order(asset_pair_text, open, close, quantity, user)
@@ -420,38 +428,38 @@ def update_output_graph(a_clicks, asset_pair_drop, b_clicks, o_clicks, ass_click
             ans = 'Order couldnt be placed!'
         fig = create_graph(asset_pair_drop)
         return '', dash.no_update, dash.no_update, fig, asset_pair_drop, ans, \
-             '', '', '', create_order_table(), '', '', welcome
+             '', '', '', create_order_table(), '', '', welcome, None
 
     # remove orders
     elif o_clicks != order_clicks:
         order_clicks += 1
         if user == '':
             return dash.no_update, get_select_options(), None, dash.no_update, dash.no_update, dash.no_update, \
-         dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update, welcome
+         dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update, welcome, login_first
         rows = order_table['props']['selected_rows']
         orderIDs = [order_table['props']['data'][x]['Order ID'] for x in rows]
         dg.remove_order(orderIDs)
         ans = f'Removed {len(rows)} order(s)!'
         fig = create_graph(asset_pair_drop)
         return '', dash.no_update, dash.no_update, fig, asset_pair_drop, \
-             '', '', '', '', create_order_table(), ans, '', welcome
+             '', '', '', '', create_order_table(), ans, '', welcome, None
 
     # remove asset from history
     elif ass_clicks != asset_clicks:
         asset_clicks += 1
         if user == '':
             return dash.no_update, get_select_options(), None, dash.no_update, dash.no_update, dash.no_update, \
-         dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update, welcome
+         dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update, welcome, login_first
         ans = dg.remove_asset(user, asset_pair_drop)
         fig = create_graph('')
         return '', get_select_options(), None, fig, '', '', \
-             '', '', '', create_order_table(), '', ans, welcome
+             '', '', '', create_order_table(), '', ans, welcome, None
 
     # update graph based on drop down selection
     else:
         fig = create_graph(asset_pair_drop)
         return '', dash.no_update, dash.no_update, fig, asset_pair_drop, '', \
-             '', '', '', create_order_table(), '', '', welcome
+             '', '', '', create_order_table(), '', '', welcome, None
 
 
 
@@ -463,8 +471,8 @@ def create_graph(asset):
         else:
             pl = dg.calc_profit('port', user)
             fig = make_subplots(rows=1, cols=2, subplot_titles=('No Asset Selected', port_title))
-            fig.add_trace(go.Scatter(x=[0],y=[0],mode='lines'), row=1, col=1)
-            fig.add_trace(go.Scatter(x=pl['Time'],y=pl['Balance'],mode='lines'), row=1, col=2)
+            fig.add_trace(go.Scatter(x=[0],y=[0],mode='lines', name='No Graph'), row=1, col=1)
+            fig.add_trace(go.Scatter(x=pl['Time'],y=pl['Balance'],mode='lines', name='Portfolio Balance'), row=1, col=2)
             fig.update_yaxes(tickformat = '$', row=1, col=1)
             fig.update_yaxes(tickformat = '$', row=1, col=2)
             return fig
@@ -477,18 +485,18 @@ def create_graph(asset):
 
     if open is None:
         fig = make_subplots(rows=1, cols=2, subplot_titles=(f'{asset} History', port_title))
-        fig.add_trace(go.Scatter(x=df['Time'],y=df['Close'],mode='lines'), row=1, col=1)
-        fig.add_trace(go.Scatter(x=pl['Time'],y=pl['Balance'],mode='lines'), row=1, col=2)
+        fig.add_trace(go.Scatter(x=df['Time'],y=df['Close'],mode='lines', name='Asset History'), row=1, col=1)
+        fig.add_trace(go.Scatter(x=pl['Time'],y=pl['Balance'],mode='lines', name='Portfolio Balance'), row=1, col=2)
         fig.update_yaxes(tickformat = '$', row=1, col=1)
         fig.update_yaxes(tickformat = '$', row=1, col=2)
         return fig
 
     fig = make_subplots(rows=1, cols=2, subplot_titles=(f'{asset} History', port_title))
     
-    fig.add_trace(go.Scatter(x=df['Time'],y=df['Close'],mode='lines'), row=1, col=1)
-    fig.add_trace(go.Scatter(x=open['Time'],y=open['Close'], mode='markers', marker_size=10, marker_symbol=5, marker_color="green"), row=1, col=1)
-    fig.add_trace(go.Scatter(x=close['Time'],y=close['Close'], mode='markers', marker_size=10, marker_symbol=6, marker_color="red"), row=1, col=1)
-    fig.add_trace(go.Scatter(x=pl['Time'],y=pl['Balance'], mode='lines'), row=1, col=2)
+    fig.add_trace(go.Scatter(name='Asset History', x=df['Time'],y=df['Close'],mode='lines'), row=1, col=1)
+    fig.add_trace(go.Scatter(name='Open Positions', x=open['Time'],y=open['Close'], mode='markers', marker_size=10, marker_symbol=5, marker_color="green"), row=1, col=1)
+    fig.add_trace(go.Scatter(name='Close Positions', x=close['Time'],y=close['Close'], mode='markers', marker_size=10, marker_symbol=6, marker_color="red"), row=1, col=1)
+    fig.add_trace(go.Scatter(name='Portfolio Balance', x=pl['Time'],y=pl['Balance'], mode='lines'), row=1, col=2)
     fig.update_traces(marker=dict(size=12,
                             line=dict(width=2,
                                         color='DarkSlateGrey')),
