@@ -3,7 +3,7 @@ import helpers
 import cryptowatch as cw
 import pandas as pd
 import numpy as np
-from datetime import datetime, date, timedelta
+from datetime import datetime, timedelta
 from sqlalchemy import create_engine
 
 class Database():
@@ -77,15 +77,30 @@ class Database():
             return True
 
     def create_account(self, username, password, fName, lName, date, start):
+        ans = ''
         try:
             ts = helpers.convert_string_to_timestamp(date)
-            sql_stmt = f"INSERT INTO users VALUES ('{username}', '{password}', '{fName}', '{lName}')"
-            self.send_query(sql_stmt, helpers.ResponseType.NONE)
-            sql_stmt = f"INSERT INTO portfolio (openDate, startingBalance, username) VALUES ({ts}, {start}, '{username}')"
-            self.send_query(sql_stmt, helpers.ResponseType.NONE)
-            return True
         except:
-            return False
+            ans = 'Date is of wrong format!'
+
+        try:
+            float(start)
+            if float(start) <= 0:
+                ans = 'Starting balance must be greater than 0'
+        except:
+            ans = 'Starting balance must be a number greater than 0'
+        if ans == '':
+            try:
+                sql_stmt = f"INSERT INTO users VALUES ('{username}', '{password}', '{fName}', '{lName}')"
+                self.send_query(sql_stmt, helpers.ResponseType.NONE)
+                sql_stmt = f"INSERT INTO portfolio (openDate, startingBalance, username) VALUES ({ts}, {start}, '{username}')"
+                self.send_query(sql_stmt, helpers.ResponseType.NONE)
+            except:
+                ans = 'Username is already taken!'
+
+        if ans == '':
+            return [True, 'Succesfully created account!']
+        return [False, ans]
 
     def create_asset(self, id, pair):
         insert_st = f"INSERT INTO assets VALUES ({id}, '{pair.upper()}')"
@@ -122,11 +137,43 @@ class Database():
         return df
 
     def create_order(self, pair, open, close, amount, user):
-        open = helpers.convert_string_to_timestamp(open)
-        close = helpers.convert_string_to_timestamp(close)
+        try:
+            open = helpers.convert_string_to_timestamp(open)
+        except:
+            return 'Format of open date is incorrect!'
+        try:
+            close = helpers.convert_string_to_timestamp(close)
+        except:
+            return 'Format of close date is incorrect!'
+        if open > close:
+            return 'Cannot have open date after close date!'
+        try:
+            float(amount)
+        except:
+            return 'Quantity must be a number!'
+        if float(amount) <= 0:
+            return 'Quantity must be a number greater than 0!'
+
+        sql = f"SELECT startingBalance, openDate FROM portfolio WHERE username='{user}'"
+        person = self.send_query(sql, helpers.ResponseType.ONE)
+        openDate = person['openDate']
+        if open < float(openDate):
+            return 'Cannot have open date for trade be before account was opened!'
+        
         id = self.get_asset_id(pair)
+
+        sql = f"SELECT Timestamp FROM history WHERE assetID='{id}' ORDER BY Timestamp Limit 1"
+        firstDate = self.send_query(sql, helpers.ResponseType.ONE)
+        firstDate = int(firstDate['Timestamp'])
+        if open < firstDate:
+            return 'Cannot have open date for trade be before asset existed!'
+        curr_balance = self.calc_profit(open, user)
+        if curr_balance.iloc[-1]['Balance'] < float(amount):
+            return 'Quantity of Trade cannot be greater than current balance!'
+
         sql_stmt = f"INSERT INTO Orders (assetID, openDate, closeDate, Quantity, username) VALUES ({id},{open}, {close}, {float(amount)}, '{user}')"
         self.send_query(sql_stmt, helpers.ResponseType.NONE)
+        return f'Order placed to buy ${amount} of {pair} completed!'
 
     def remove_order(self, orderIDs):
         for order in orderIDs:
@@ -174,8 +221,11 @@ class Database():
 
         return open_df, close_df
 
-    def calc_profit(self, pair, user):
-        now_ts = datetime.now().timestamp()
+    def calc_profit(self, time, user):
+        if time == 'port':
+            now_ts = datetime.now().timestamp()
+        else:
+            now_ts = time
         if user != '':
             sql = f"SELECT startingBalance, openDate FROM portfolio WHERE username='{user}'"
             person = self.send_query(sql, helpers.ResponseType.ONE)
@@ -252,5 +302,3 @@ class Database():
 if __name__ == "__main__":
     db = Database()
     db.calc_profit('hi', 'test')
-
-

@@ -4,6 +4,7 @@ import dash_bootstrap_components as dbc
 import dash_html_components as html
 from dash.dependencies import Output, Input, State
 import dash_table
+from numpy.core.shape_base import block
 import helpers
 from mydb import Database
 import plotly.graph_objects as go
@@ -226,52 +227,51 @@ app.layout = html.Div([
     html.Div(id='alert2'),
     html.Div(id='user', style={'display': 'none'}),
     dbc.Row(button_bar, style={'width': '25%','float': 'right'}),
-    html.H1(f'WELCOME TO PAPERTRADER'),
-    html.Div(id='title'),
-    dbc.Row(dbc.Col(
-        [dbc.Label('Add Asset Pair:'),
-        dcc.Dropdown(
-            id="pair",
-            options=get_all_pairs(),
-        ),
-    dbc.Button(id='add', n_clicks=0, children='Add Asset'),
-        html.Div(id='output-state')
-        ], width=3
-    )),
-    dbc.Row(dbc.Col(
+    html.H1(f'WELCOME TO PAPERTRADER', style={'padding': '25px'}),
+    html.Div(id='title', style={'padding': '25px'}),
+    dbc.Row(dbc.Col(html.Div(
+    [dbc.Label('Add Asset Pair:'),
+            dcc.Dropdown(
+                id="pair",
+                options=get_all_pairs(),
+            ),
+        dbc.Button(id='add', n_clicks=0, children='Add Asset', block=True),
+            html.Div(id='output-state')
+            ], style={'padding': '25px'}),width=3)),
+    dbc.Row(dbc.Col(html.Div(
         [dbc.Label('Asset Pair:'),
         dcc.Dropdown(
             id="select_pair",
             options=get_select_options(),
         ),
-        dbc.Button(id='remove_asset', n_clicks=0, children='Remove Asset'),
+        dbc.Button(id='remove_asset', n_clicks=0, children='Remove Asset', block=True),
         html.Div(id='remove_asset_status')
-    ], width=3
+    ], style={'padding': '25px'}),width=3
     )),
     dbc.Row([dbc.Col(
         dcc.Graph(
             id='example-graph',
-            figure=empty_graph()) 
+            figure=empty_graph()), width=12
     )]),
     dbc.Row([dbc.Col([
         dbc.Label('Place Order:'),
         dbc.Form([dbc.FormGroup(dbc.Input(id='asset_to_buy', placeholder='Asset Pair')),
-        dbc.FormGroup(dbc.Input(id='open_date',placeholder='Open Date')),
-        dbc.FormGroup(dbc.Input(id='close_date',placeholder='Close Date')),
-        dbc.FormGroup(dbc.Input(id='quantity',placeholder='Quantity'))]),
-        dbc.Button(id='place_order', n_clicks=0, children='Place Order'),
+        dbc.FormGroup(dbc.Input(id='open_date',placeholder='Open Date: Format YYYY-MM-DD')),
+        dbc.FormGroup(dbc.Input(id='close_date',placeholder='Close Date: Format YYYY-MM-DD')),
+        dbc.FormGroup(dbc.Input(id='quantity',placeholder='Quantity ($)'))]),
+        dbc.Button(id='place_order', n_clicks=0, children='Place Order', block=True),
         html.Div(id='output-state1')
-    ], width=3),
+    ], width={'size': 3, 'offset': 1}),
      dbc.Col([
         dbc.Label('Trade History'),
         html.Div(id='order_details', children=create_order_table()),
-        dbc.Button(id='remove_order', n_clicks=0, children='Remove Order'),
+        dbc.Button(id='remove_order', n_clicks=0, children='Remove Order', block=True),
         html.Div(id='order_remove_details')
-    ], width={'size': 5, 'offset': 3})
+    ], width={'size': 5, 'offset': 2})
     ])
 
    
-    ])
+    ], style={'width': '99%'})
 
 
 @app.callback(
@@ -294,10 +294,10 @@ def toggle_modal(cn1, cn2, is_open, name, pw, first, last, open, balance):
     if cn2 != cnn2:
         cnn2 += 1
         test = dg.create_account(name, pw, first, last, open, balance)
-        if test:
-            return not is_open, dbc.Alert("Account succesfully created!", color="success", duration=4000)
+        if test[0]:
+            return not is_open, dbc.Alert(test[1], color="success", duration=4000)
         else:
-            return not is_open, dbc.Alert("Account could not be created!", color="danger", duration=4000)
+            return not is_open, dbc.Alert(test[1], color="danger", duration=4000)
 
     return is_open
 
@@ -318,9 +318,9 @@ def toggle_modal(n1, n2, log, is_open, name, pw):
     if logout_click != None and log != logout_click:
         logout_click += 1
         if user == '':
-            message = dbc.Alert("Not logged in!", color="warning", duration=4000)
+            message = dbc.Alert("Not logged in!", color="warning", duration=1000)
         else:
-            message = dbc.Alert("Successfully logged out!", color="success", duration=4000)
+            message = dbc.Alert("Successfully logged out!", color="success", duration=1000)
 
         return dash.no_update, '', '', '', message
 
@@ -377,7 +377,7 @@ def toggle_modal(n1, n2, log, is_open, name, pw):
 # update basically everything on the screen
 def update_output_graph(a_clicks, asset_pair_drop, b_clicks, o_clicks, ass_clicks, user1, a_pair, asset_pair_text, open, close, quantity, order_table):
     global add_clicks, buy_clicks, order_clicks, asset_clicks, logout_click, user
-    login_first = dbc.Alert("You must login first!", color="danger", duration=2000)
+    login_first = dbc.Alert("You must login first!", color="danger", duration=1000)
     if user == '':
         welcome = html.H2('Hello, Please login!')
     else:
@@ -419,13 +419,7 @@ def update_output_graph(a_clicks, asset_pair_drop, b_clicks, o_clicks, ass_click
         if user == '':
             return dash.no_update, get_select_options(), None, dash.no_update, dash.no_update, dash.no_update, \
          dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update, welcome, login_first
-        ans = ''
-        try:
-            dg.create_order(asset_pair_text, open, close, quantity, user)
-            ans = f'Order placed to buy ${quantity} of {asset_pair_text} completed!'
-            
-        except:
-            ans = 'Order couldnt be placed!'
+        ans = dg.create_order(asset_pair_text, open, close, quantity, user)
         fig = create_graph(asset_pair_drop)
         return '', dash.no_update, dash.no_update, fig, asset_pair_drop, ans, \
              '', '', '', create_order_table(), '', '', welcome, None
