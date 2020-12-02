@@ -160,6 +160,8 @@ class Database():
         ans = self.error_order(open, close, amount)
         if ans is not None:
             return ans
+        open = helpers.convert_string_to_timestamp(open)
+        close = helpers.convert_string_to_timestamp(close)
         sql = f"SELECT startingBalance, openDate FROM portfolio WHERE username='{user}'"
         person = self.send_query(sql, helpers.ResponseType.ONE)
         openDate = person['openDate']
