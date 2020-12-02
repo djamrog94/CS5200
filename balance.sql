@@ -104,6 +104,22 @@ END IF;
 END$$
 DELIMITER ;
 
+DROP PROCEDURE IF EXISTS update_order;
+DELIMITER $$
+CREATE PROCEDURE update_order
+( 
+IN id INT,
+IN open INT,
+IN close INT,
+IN amount INT
+)
+BEGIN
+UPDATE Orders
+SET openDate = open, closeDate = close, quantity = amount
+WHERE orderID=id;
+END$$
+DELIMITER ;
+
 INSERT INTO users VALUES ('test', 'test', 'dave', 'jam');
 INSERT INTO portfolio (openDate, startingBalance, username) VALUES (1420070400, 15000, 'test');
 

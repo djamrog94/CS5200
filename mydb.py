@@ -136,7 +136,7 @@ class Database():
         df = df[['Time', 'Close']]
         return df
 
-    def create_order(self, pair, open, close, amount, user):
+    def error_order(self, open, close, amount):
         try:
             open = helpers.convert_string_to_timestamp(open)
         except:
@@ -154,6 +154,12 @@ class Database():
         if float(amount) <= 0:
             return 'Quantity must be a number greater than 0!'
 
+        return None
+
+    def create_order(self, pair, open, close, amount, user):
+        ans = self.error_order(open, close, amount)
+        if ans is not None:
+            return ans
         sql = f"SELECT startingBalance, openDate FROM portfolio WHERE username='{user}'"
         person = self.send_query(sql, helpers.ResponseType.ONE)
         openDate = person['openDate']
@@ -179,6 +185,20 @@ class Database():
         for order in orderIDs:
             sql_stmt = f"DELETE FROM orders WHERE orderID='{order}'"
             self.send_query(sql_stmt, helpers.ResponseType.NONE)
+
+    def update_order(self, id, open, close, quantity):
+        ans = self.error_order(open, close, quantity)
+        if ans is not None:
+            return [False, ans]
+        # try to update
+        try:
+            open = helpers.convert_string_to_timestamp(open)
+            close = helpers.convert_string_to_timestamp(close)
+            quantity = float(quantity)
+            self.send_procedure('update_order', [id, open, close, quantity], helpers.ResponseType.NONE)
+            return [True, 'Successfully updated order']
+        except:
+            return [False, 'Failed to update order']
 
     def get_order_details(self, user):
         resp = self.send_procedure('order_details', [user], helpers.ResponseType.ALL)
@@ -299,6 +319,10 @@ class Database():
         resp = self.send_query(sql_stmt, helpers.ResponseType.ONE)
         return resp['name']
 
-if __name__ == "__main__":
-    db = Database()
-    db.calc_profit('hi', 'test')
+    def get_order_ids(self, user):
+        if user == '':
+            return ''
+        sql_stmt = f"SELECT orderID FROM orders where username='{user}' ORDER BY orderID"
+        resp = self.send_query(sql_stmt, helpers.ResponseType.ALL)
+        return [{'label': x['orderID'], 'value': x['orderID']} for x in resp]        
+

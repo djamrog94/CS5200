@@ -4,7 +4,6 @@ import dash_bootstrap_components as dbc
 import dash_html_components as html
 from dash.dependencies import Output, Input, State
 import dash_table
-from numpy.core.shape_base import block
 import helpers
 from mydb import Database
 import plotly.graph_objects as go
@@ -13,7 +12,6 @@ from plotly.subplots import make_subplots
 dg = Database()
 
 app = dash.Dash(external_stylesheets=[dbc.themes.FLATLY])
-dg = Database()
 
 buy_clicks = 0
 order_clicks = 0
@@ -26,6 +24,8 @@ nn1 = 0
 nn2 = 0
 cnn1 = 0
 cnn2 = 0
+unn1 = 0
+unn2= 0
 user = ''
 
 
@@ -219,13 +219,39 @@ account_modal = html.Div(
     ]
 )
 
+
+update_modal = html.Div(
+    [
+        dbc.Button("Update Order", id="update"),
+        dbc.Modal(
+            [
+                dbc.ModalHeader("Update Order"),
+                dbc.ModalBody([dbc.Label('Pick Order:'),
+                    dbc.Form([dbc.FormGroup(dcc.Dropdown(id='id_update')),
+                    dbc.FormGroup(html.Div(id='update_asset')),
+                    dbc.FormGroup(dbc.Input(id='update_open',placeholder='Open Date: Format YYYY-MM-DD')),
+                    dbc.FormGroup(dbc.Input(id='update_close',placeholder='Close Date: Format YYYY-MM-DD')),
+                    dbc.FormGroup(dbc.Input(id='update_quantity',placeholder='Quantity ($)'))]),
+                ]),
+                dbc.ModalFooter(
+                    dbc.Button("Update Order", id="update_button", className="ml-auto")
+                ),
+            ],
+            id="update_modal",
+        ),
+    ]
+)
+
+
 button_bar = dbc.ButtonGroup([user_modal, account_modal, dbc.Button(id='logout', n_clicks=0, children='Logout')])
 
 app.layout = html.Div([
     html.Div(id='alert'),
     html.Div(id='alert1'),
     html.Div(id='alert2'),
+    html.Div(id='alert3'),
     html.Div(id='user', style={'display': 'none'}),
+    html.Div(id='refresh', style={'display': 'none'}),
     dbc.Row(button_bar, style={'width': '25%','float': 'right'}),
     html.H1(f'WELCOME TO PAPERTRADER', style={'padding': '25px'}),
     html.Div(id='title', style={'padding': '25px'}),
@@ -265,7 +291,8 @@ app.layout = html.Div([
      dbc.Col([
         dbc.Label('Trade History'),
         html.Div(id='order_details', children=create_order_table()),
-        dbc.Button(id='remove_order', n_clicks=0, children='Remove Order', block=True),
+        dbc.Button(id='remove_order', n_clicks=0, children='Remove Order'),
+        html.Div(children=[update_modal], style={'float': 'right'}),
         html.Div(id='order_remove_details')
     ], width={'size': 5, 'offset': 2})
     ])
@@ -275,7 +302,59 @@ app.layout = html.Div([
 
 
 @app.callback(
-    [Output("account_modal", "is_open"),Output("alert", "children")],
+    [Output("update_asset", "children"), Output("update_open", "placeholder"),
+     Output("update_close", "placeholder"), Output("update_quantity", "placeholder")],
+    [Input("id_update", "value")]
+)
+def update_modal1(id):
+    if id is not None:
+        sql_stmt = f"SELECT * FROM orders WHERE orderID={id}"
+        resp = dg.send_query(sql_stmt, helpers.ResponseType.ONE)
+        name = dg.get_asset_name(resp['assetID'])
+        open = helpers.convert_timestamp_to_date_single(resp['openDate'])
+        close = helpers.convert_timestamp_to_date_single(resp['closeDate'])
+        quantity = resp['quantity']
+        return f"Asset to Update: {name}", f'Prior open date: {open}', f'Prior close date: {close}', f'Prior quantity: {quantity}'
+    return dash.no_update, dash.no_update, dash.no_update, dash.no_update
+
+
+@app.callback(
+    [Output("update_modal", "is_open"),Output("alert", "children"), Output('id_update', 'options'), Output('refresh', 'children')],
+    [Input("update", "n_clicks"), Input("update_button", "n_clicks")],
+    [State("update_modal", "is_open"), State("id_update", "value"),
+     State("update_open", "value"), State("update_close", "value"),
+     State("update_quantity", "value")]
+)
+def toggle_modal(un1, un2, is_open, id, open, close, quantity):
+    global unn1, unn2
+
+    if un1 is None and un2 is None:
+        return dash.no_update, dash.no_update, dash.no_update, dash.no_update
+
+    if un1 != unn1:
+        unn1 += 1
+        if user == '':
+            return dash.no_update, dbc.Alert('Login first', color="danger", duration=4000), dash.no_update, dash.no_update
+
+        ids = dg.get_order_ids(user)
+        if ids == []:
+            return dash.no_update, dbc.Alert('No orders to modify', color="danger", duration=4000), dash.no_update, dash.no_update
+        return not is_open, dash.no_update, ids, dash.no_update
+
+    if un2 != unn2:
+        unn2 += 1
+        test = dg.update_order(id, open, close, quantity)
+
+        if test[0]:
+            return not is_open, dbc.Alert(test[1], color="success", duration=4000), dash.no_update, 'update'
+        else:
+            return not is_open, dbc.Alert(test[1], color="danger", duration=4000), dash.no_update, dash.no_update
+
+    return is_open
+
+
+@app.callback(
+    [Output("account_modal", "is_open"),Output("alert3", "children")],
     [Input("create_account_button", "n_clicks"), Input("account_submit", "n_clicks")],
     [State("account_modal", "is_open"), State("create_username", "value"),
      State("create_password", "value"), State("create_first", "value"),
@@ -362,7 +441,8 @@ def toggle_modal(n1, n2, log, is_open, name, pw):
                Input('place_order', 'n_clicks'),
                Input('remove_order', 'n_clicks'),
                Input('remove_asset', 'n_clicks'),
-               Input('user', 'children')
+               Input('user', 'children'),
+               Input('refresh', 'children')
                
                 ],
               [State('pair', 'value'),
@@ -375,7 +455,7 @@ def toggle_modal(n1, n2, log, is_open, name, pw):
 
 
 # update basically everything on the screen
-def update_output_graph(a_clicks, asset_pair_drop, b_clicks, o_clicks, ass_clicks, user1, a_pair, asset_pair_text, open, close, quantity, order_table):
+def update_output_graph(a_clicks, asset_pair_drop, b_clicks, o_clicks, ass_clicks, user1, re, a_pair, asset_pair_text, open, close, quantity, order_table):
     global add_clicks, buy_clicks, order_clicks, asset_clicks, logout_click, user
     login_first = dbc.Alert("You must login first!", color="danger", duration=1000)
     if user == '':
@@ -448,6 +528,11 @@ def update_output_graph(a_clicks, asset_pair_drop, b_clicks, o_clicks, ass_click
         fig = create_graph('')
         return '', get_select_options(), None, fig, '', '', \
              '', '', '', create_order_table(), '', ans, welcome, None
+
+    elif re == 'refresh':
+        fig = create_graph('')
+        return '', get_select_options(), None, fig, '', '', \
+             '', '', '', create_order_table(), '', dash.no_update, welcome, None
 
     # update graph based on drop down selection
     else:
