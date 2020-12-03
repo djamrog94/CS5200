@@ -50,8 +50,10 @@ def get_all_pairs():
 def get_select_options():
     sql_stmt = f"SELECT assetID FROM user_asset_detail where username='{user}'"
     opts = db.send_query(sql_stmt, helpers.ResponseType.ALL)
-    return [{'label': db.get_asset_name(x['assetID']), 'value': db.get_asset_name(x['assetID'])} for x in opts]
-    
+    opts = [{'label': db.get_asset_name(x['assetID']), 'value': db.get_asset_name(x['assetID'])} for x in opts]
+    return dcc.Dropdown(id='asset_dropdown', options = opts, value = '')
+
+
 def get_all_saved():
     sql_stmt = "SELECT * FROM assets"
     opts = db.send_query(sql_stmt, helpers.ResponseType.ALL)
@@ -266,10 +268,12 @@ app.layout = html.Div([
             ], style={'padding': '25px'}),width=3)),
     dbc.Row(dbc.Col(html.Div(
         [dbc.Label('Asset Pair:'),
-        dcc.Dropdown(
-            id="select_pair",
-            options=get_select_options(),
-        ),
+        html.Div(id='pair_drop', children=get_select_options())
+        # dcc.Dropdown(
+        #     id="select_pair",
+        #     options=get_select_options(),
+        #     value = '')
+        ,
         dbc.Button(id='remove_asset', n_clicks=0, children='Remove Asset', block=True),
         html.Div(id='remove_asset_status')
     ], style={'padding': '25px'}),width=3
@@ -380,8 +384,6 @@ def toggle_modal(cn1, cn2, is_open, name, pw, first, last, open, balance):
 
     return is_open
 
-
-
 @app.callback(
     [Output("modal", "is_open"),
     Output("user", "children"),
@@ -422,7 +424,7 @@ def toggle_modal(n1, n2, log, is_open, name, pw):
 
 # major callback
 @app.callback([Output('output-state', 'children'),
-               Output('select_pair', 'options'),
+               Output('pair_drop', 'children'),
                Output('pair', 'value'),
                Output('example-graph', 'figure'),
                Output('asset_to_buy', 'value'),
@@ -437,7 +439,7 @@ def toggle_modal(n1, n2, log, is_open, name, pw):
                Output('alert2', 'children')
                ],
               [Input('add', 'n_clicks'),
-               Input('select_pair', 'value'),
+               Input('asset_dropdown', 'value'),
                Input('place_order', 'n_clicks'),
                Input('remove_order', 'n_clicks'),
                Input('remove_asset', 'n_clicks'),
@@ -557,7 +559,7 @@ def create_graph(asset):
             return fig
     
     df = db.get_history(asset)
-    open, close = db.get_orders(asset)
+    open, close = db.get_orders(user, asset)
 
     # personal graph
     pl = db.calc_profit('port', user)

@@ -215,9 +215,9 @@ class Database():
         sql_stmt = f"INSERT INTO user_asset_detail VALUES ('{user}', '{id}')"
         self.send_query(sql_stmt, helpers.ResponseType.NONE)
 
-    def get_orders(self, pair):
+    def get_orders(self, user, pair):
         id = self.get_asset_id(pair)
-        sql_stmt = f"SELECT openDate, closeDate FROM Orders WHERE assetID='{id}'"
+        sql_stmt = f"SELECT openDate, closeDate FROM Orders WHERE assetID='{id}' AND username='{user}'"
         data = self.send_query(sql_stmt, helpers.ResponseType.ALL)
         if len(data) == 0:
             return None, None
@@ -226,12 +226,12 @@ class Database():
         for trade in data:
             # sql_stmt = f"SELECT Close FROM history WHERE Timestamp='{trade['openDate']}' AND assetID='{id}'"
             # o_price = self.send_query(sql_stmt, helpers.ResponseType.ONE)
-            o_price = self.send_procedure('order_history', [trade['openDate'], id])
+            o_price = self.send_procedure('order_history', [trade['openDate'], id], helpers.ResponseType.ONE)
             open[0].append(trade['openDate'])
             open[1].append(o_price['Close'])
             # sql_smt = f"SELECT Close FROM history WHERE Timestamp='{trade['closeDate']}' AND assetID='{id}'"
             # c_price = self.send_query(sql_smt, helpers.ResponseType.ONE)
-            c_price = self.send_procedure('order_history', [trade['closeDate'], id])
+            c_price = self.send_procedure('order_history', [trade['closeDate'], id], helpers.ResponseType.ONE)
             close[0].append(trade['closeDate'])
             close[1].append(c_price['Close'])
         open_df = pd.DataFrame({'Timestamp': open[0], 'Price': open[1]})
@@ -263,11 +263,11 @@ class Database():
         if len(orders) == 0:
             # sql_stmt = f"SELECT DISTINCT Timestamp from history WHERE Timestamp >= {date} and Timestamp <= {now_ts}"
             # dates = self.send_query(sql_stmt, helpers.ResponseType.ALL)
-            dates = self.send_procedure('get_dates', [date, now_ts])
+            dates = self.send_procedure('get_dates', [date, now_ts], helpers.ResponseType.ALL)
             df = pd.DataFrame(dates)
             all_days = []
             if len(df) == 0:
-                date_dt = helpers.convert_timestamp_to_date_single(int(date))
+                date_dt = helpers.convert_timestamp_to_date_single(float(date))
                 all_days.append(date_dt)
                 while date_dt < datetime.now():
                     date_dt += timedelta(days=1)
@@ -287,7 +287,7 @@ class Database():
             data.append(rets_df)
         # sql_stmt = f"SELECT DISTINCT Timestamp from history WHERE Timestamp >= {date} and Timestamp <= {now_ts}"
         # dates = self.send_query(sql_stmt, helpers.ResponseType.ALL)
-        dates = self.send_procedure('get_dates', [date, now_ts])
+        dates = self.send_procedure('get_dates', [date, now_ts], helpers.ResponseType.ALL)
         df = pd.DataFrame(dates)
         df = df.set_index(df['Timestamp'])
         df['Balance'] = 0
