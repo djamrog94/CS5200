@@ -9,7 +9,7 @@ from mydb import Database
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 
-dg = Database()
+db = Database()
 
 app = dash.Dash(external_stylesheets=[dbc.themes.FLATLY])
 
@@ -44,17 +44,17 @@ def empty_graph():
     return fig
 
 def get_all_pairs():
-    asset_pairs = dg.get_asset_pairs()
+    asset_pairs = db.get_asset_pairs()
     return [{'label': x, 'value': x} for x in asset_pairs]
 
 def get_select_options():
     sql_stmt = f"SELECT assetID FROM user_asset_detail where username='{user}'"
-    opts = dg.send_query(sql_stmt, helpers.ResponseType.ALL)
-    return [{'label': dg.get_asset_name(x['assetID']), 'value': dg.get_asset_name(x['assetID'])} for x in opts]
+    opts = db.send_query(sql_stmt, helpers.ResponseType.ALL)
+    return [{'label': db.get_asset_name(x['assetID']), 'value': db.get_asset_name(x['assetID'])} for x in opts]
     
 def get_all_saved():
     sql_stmt = "SELECT * FROM assets"
-    opts = dg.send_query(sql_stmt, helpers.ResponseType.ALL)
+    opts = db.send_query(sql_stmt, helpers.ResponseType.ALL)
     return [{'label': x['name'], 'value': x['name']} for x in opts]
 
 
@@ -63,7 +63,7 @@ ROW_HEIGHT = 35
 MAX_HEIGHT = (10 * ROW_HEIGHT) + MIN_ORDER_HEIGHT
 
 def create_order_table():
-    order_df = dg.get_order_details(user)
+    order_df = db.get_order_details(user)
     order_details = dash_table.DataTable(
         data=order_df.to_dict('records'),
         columns=[{'id': c, 'name': c} for c in order_df.columns],
@@ -309,8 +309,8 @@ app.layout = html.Div([
 def update_modal1(id):
     if id is not None:
         sql_stmt = f"SELECT * FROM orders WHERE orderID={id}"
-        resp = dg.send_query(sql_stmt, helpers.ResponseType.ONE)
-        name = dg.get_asset_name(resp['assetID'])
+        resp = db.send_query(sql_stmt, helpers.ResponseType.ONE)
+        name = db.get_asset_name(resp['assetID'])
         open = helpers.convert_timestamp_to_date_single(resp['openDate'])
         close = helpers.convert_timestamp_to_date_single(resp['closeDate'])
         quantity = resp['quantity']
@@ -336,14 +336,14 @@ def toggle_modal(un1, un2, is_open, id, open, close, quantity):
         if user == '':
             return dash.no_update, dbc.Alert('Login first', color="danger", duration=4000), dash.no_update, dash.no_update
 
-        ids = dg.get_order_ids(user)
+        ids = db.get_order_ids(user)
         if ids == []:
             return dash.no_update, dbc.Alert('No orders to modify', color="danger", duration=4000), dash.no_update, dash.no_update
         return not is_open, dash.no_update, ids, dash.no_update
 
     if un2 != unn2:
         unn2 += 1
-        test = dg.update_order(id, open, close, quantity)
+        test = db.update_order(id, open, close, quantity)
 
         if test[0]:
             return not is_open, dbc.Alert(test[1], color="success", duration=4000), dash.no_update, 'update'
@@ -372,7 +372,7 @@ def toggle_modal(cn1, cn2, is_open, name, pw, first, last, open, balance):
 
     if cn2 != cnn2:
         cnn2 += 1
-        test = dg.create_account(name, pw, first, last, open, balance)
+        test = db.create_account(name, pw, first, last, open, balance)
         if test[0]:
             return not is_open, dbc.Alert(test[1], color="success", duration=4000)
         else:
@@ -412,7 +412,7 @@ def toggle_modal(n1, n2, log, is_open, name, pw):
 
     if n2 != nn2:
         nn2 += 1
-        test = dg.login(name, pw)
+        test = db.login(name, pw)
         if test:
             return not is_open, name, '', '', dbc.Alert("Successfully logged in!", color="success", duration=4000)
         else:
@@ -483,10 +483,10 @@ def update_output_graph(a_clicks, asset_pair_drop, b_clicks, o_clicks, ass_click
         else:
             asset = {'label': a_pair, 'value': a_pair}
             if asset not in get_all_saved():
-                dg.create_asset(dg.get_asset_id(asset['label']), asset['label'])
-                dg.collect_data(asset['label'])
+                db.create_asset(db.get_asset_id(asset['label']), asset['label'])
+                db.collect_data(asset['label'])
             if asset not in get_select_options():
-                dg.add_hist_user(user, a_pair)
+                db.add_hist_user(user, a_pair)
                 ans = f'Asset pair(s) added: {a_pair}'
             else:
                 ans = f'Asset pair(s) already been added!: {a_pair}'
@@ -499,7 +499,7 @@ def update_output_graph(a_clicks, asset_pair_drop, b_clicks, o_clicks, ass_click
         if user == '':
             return dash.no_update, get_select_options(), None, dash.no_update, dash.no_update, dash.no_update, \
          dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update, welcome, login_first
-        ans = dg.create_order(asset_pair_text, open, close, quantity, user)
+        ans = db.create_order(asset_pair_text, open, close, quantity, user)
         fig = create_graph(asset_pair_drop)
         return '', dash.no_update, dash.no_update, fig, asset_pair_drop, ans, \
              '', '', '', create_order_table(), '', '', welcome, None
@@ -512,7 +512,7 @@ def update_output_graph(a_clicks, asset_pair_drop, b_clicks, o_clicks, ass_click
          dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update, welcome, login_first
         rows = order_table['props']['selected_rows']
         orderIDs = [order_table['props']['data'][x]['Order ID'] for x in rows]
-        dg.remove_order(orderIDs)
+        db.remove_order(orderIDs)
         ans = f'Removed {len(rows)} order(s)!'
         fig = create_graph(asset_pair_drop)
         return '', dash.no_update, dash.no_update, fig, asset_pair_drop, \
@@ -524,7 +524,7 @@ def update_output_graph(a_clicks, asset_pair_drop, b_clicks, o_clicks, ass_click
         if user == '':
             return dash.no_update, get_select_options(), None, dash.no_update, dash.no_update, dash.no_update, \
          dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update, dash.no_update, welcome, login_first
-        ans = dg.remove_asset(user, asset_pair_drop)
+        ans = db.remove_asset(user, asset_pair_drop)
         fig = create_graph('')
         return '', get_select_options(), None, fig, '', '', \
              '', '', '', create_order_table(), '', ans, welcome, None
@@ -548,7 +548,7 @@ def create_graph(asset):
         if user == '':
             return empty_graph()
         else:
-            pl = dg.calc_profit('port', user)
+            pl = db.calc_profit('port', user)
             fig = make_subplots(rows=1, cols=2, subplot_titles=('No Asset Selected', port_title))
             fig.add_trace(go.Scatter(x=[0],y=[0],mode='lines', name='No Graph'), row=1, col=1)
             fig.add_trace(go.Scatter(x=pl['Time'],y=pl['Balance'],mode='lines', name='Portfolio Balance'), row=1, col=2)
@@ -556,11 +556,11 @@ def create_graph(asset):
             fig.update_yaxes(tickformat = '$', row=1, col=2)
             return fig
     
-    df = dg.get_history(asset)
-    open, close = dg.get_orders(asset)
+    df = db.get_history(asset)
+    open, close = db.get_orders(asset)
 
     # personal graph
-    pl = dg.calc_profit('port', user)
+    pl = db.calc_profit('port', user)
 
     if open is None:
         fig = make_subplots(rows=1, cols=2, subplot_titles=(f'{asset} History', port_title))
