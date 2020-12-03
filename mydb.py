@@ -224,13 +224,9 @@ class Database():
         open = [[],[]]
         close = [[],[]]
         for trade in data:
-            # sql_stmt = f"SELECT Close FROM history WHERE Timestamp='{trade['openDate']}' AND assetID='{id}'"
-            # o_price = self.send_query(sql_stmt, helpers.ResponseType.ONE)
             o_price = self.send_procedure('order_history', [trade['openDate'], id], helpers.ResponseType.ONE)
             open[0].append(trade['openDate'])
             open[1].append(o_price['Close'])
-            # sql_smt = f"SELECT Close FROM history WHERE Timestamp='{trade['closeDate']}' AND assetID='{id}'"
-            # c_price = self.send_query(sql_smt, helpers.ResponseType.ONE)
             c_price = self.send_procedure('order_history', [trade['closeDate'], id], helpers.ResponseType.ONE)
             close[0].append(trade['closeDate'])
             close[1].append(c_price['Close'])
@@ -261,8 +257,6 @@ class Database():
         sql_stmt = f"SELECT orderID FROM orders WHERE username = '{user}'"
         orders = self.send_query(sql_stmt, helpers.ResponseType.ALL)
         if len(orders) == 0:
-            # sql_stmt = f"SELECT DISTINCT Timestamp from history WHERE Timestamp >= {date} and Timestamp <= {now_ts}"
-            # dates = self.send_query(sql_stmt, helpers.ResponseType.ALL)
             dates = self.send_procedure('get_dates', [date, now_ts], helpers.ResponseType.ALL)
             df = pd.DataFrame(dates)
             all_days = []
@@ -285,8 +279,6 @@ class Database():
             rets_df = pd.DataFrame(rets, index=df['Timestamp'], columns=['Balance'])
             rets_df = rets_df.dropna()
             data.append(rets_df)
-        # sql_stmt = f"SELECT DISTINCT Timestamp from history WHERE Timestamp >= {date} and Timestamp <= {now_ts}"
-        # dates = self.send_query(sql_stmt, helpers.ResponseType.ALL)
         dates = self.send_procedure('get_dates', [date, now_ts], helpers.ResponseType.ALL)
         df = pd.DataFrame(dates)
         df = df.set_index(df['Timestamp'])
